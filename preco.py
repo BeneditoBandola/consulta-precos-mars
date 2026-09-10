@@ -185,7 +185,6 @@ def eh_produto_inovacao_ou_smallbag(row):
     ean = str(row.get('EAN_LIMPO', ''))
     cod_min = str(row.get('CODIGO_MINASSAL_LIMPO', ''))
     
-    # Exclusão total de Optimum, Champion e 500g genéricos
     if 'optimum' in nome or 'opt cat' in nome or 'opt dog' in nome:
         return False
     if 'champion' in nome or 'champ' in nome:
@@ -197,7 +196,6 @@ def eh_produto_inovacao_ou_smallbag(row):
     if cod_min in codigos_removidos:
         return False
 
-    # EANs de Inovação diretos permitidos
     eans_alvo = [
         "7896029047606", "7896029047620", "7896029047736", "7896029047651",
         "7896029047743", "7896029047842", "7896029047866", "7896029047880",
@@ -207,14 +205,12 @@ def eh_produto_inovacao_ou_smallbag(row):
     if ean in eans_alvo:
         return True
         
-    # Termos de foco: Filezitos, Sheba Creamy e especificamente os Biscroks de Banana e Maçã de 500g
     if 'filezito' in nome or 'sheba creamy' in nome:
         return True
         
     if 'biscrok' in nome and ('banana' in nome or 'maca' in nome):
         return True
             
-    # Small Bags: embalagens menores que 3kg (< 3000g ou < 3kg)
     if 'kg' in nome or 'g' in nome:
         if 'dry' in nome or 'racao' in nome or 'bag' in nome or 'adulto' in nome or 'filhote' in nome:
             match_g = re.search(r'(\d+)\s*g', nome)
@@ -228,7 +224,7 @@ def eh_produto_inovacao_ou_smallbag(row):
 
     return False
 
-# Função para gerar o PDF em memória (BytesIO)
+# Função para gerar o PDF em memória com cores condicionais e agrupamento
 def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos_presentes, oportunidades_faltantes):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
@@ -285,13 +281,23 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos
     tabela_dados = [["Produto", "Linha", "Cód", "Rec. MG", "Lido", "Análise"]]
     
     for item in produtos_presentes:
-        analise = "No Preço"
+        analise_txt = "No Preço"
+        cor_estilo = colors.HexColor('#10B981') # Verde padrão
+        
         if item['preco_praticado'] > 0:
             diff = item['preco_praticado'] - item['preco_recomendado']
             if diff > 0.50:
-                analise = f"Acima (+R$ {diff:.2f})"
+                analise_txt = f"Acima (+R$ {diff:.2f})"
+                cor_estilo = colors.HexColor('#DC2626') # Vermelho
             elif diff < -0.50:
-                analise = f"Abaixo (-R$ {abs(diff):.2f})"
+                analise_txt = f"Abaixo (-R$ {abs(diff):.2f})"
+                cor_estilo = colors.HexColor('#10B981') # Verde
+            else:
+                analise_txt = "No Preço (Ideal)"
+                cor_estilo = colors.HexColor('#10B981')
+        
+        # Parágrafos formatados em negrito com a cor correta para o PDF
+        p_analise = Paragraph(f"<b><font color='{cor_estilo.hexval()}'>{analise_txt}</font></b>", styles['Normal'])
         
         tabela_dados.append([
             item['produto'][:32],
@@ -299,7 +305,7 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos
             str(item['codigo']),
             f"R$ {item['preco_recomendado']:.2f}",
             f"R$ {item['preco_praticado']:.2f}",
-            analise
+            p_analise
         ])
         
     t1 = Table(tabela_dados, colWidths=[160, 80, 50, 70, 70, 120])
@@ -317,12 +323,14 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos
     story.append(t1)
     story.append(Spacer(1, 15))
     
-    story.append(Paragraph("<b>🚨 Oportunidades de Inovações & Small Bags Ausentes</b>", secao_style))
+    story.append(Paragraph("<b>🚨 Oportunidades de Inovações & Small Bags Ausentes (Agrupadas)</b>", secao_style))
     
     tabela_faltantes = [["Produto Oportunidade", "Linha", "Cód", "Sugestão RSP (MG)"]]
     
     if oportunidades_faltantes:
-        for item in oportunidades_faltantes:
+        # Agrupamento e ordenação por nome do produto
+        oportunidades_ordenadas = sorted(oportunidades_faltantes, key=lambda x: x['produto'])
+        for item in oportunidades_ordenadas:
             tabela_faltantes.append([
                 item['produto'][:40],
                 str(item['categoria']),
