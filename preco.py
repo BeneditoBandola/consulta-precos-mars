@@ -185,19 +185,23 @@ def eh_produto_inovacao_ou_smallbag(row):
     ean = str(row.get('EAN_LIMPO', ''))
     cod_min = str(row.get('CODIGO_MINASSAL_LIMPO', ''))
     
+    # Exclusão total de Optimum, Champion, sacos de 10,1kg de Superfoods e 500g genéricos
     if 'optimum' in nome or 'opt cat' in nome or 'opt dog' in nome:
         return False
     if 'champion' in nome or 'champ' in nome:
         return False
+    if '10,1kg' in nome or '10.1kg' in nome:
+        return False
     if '500g' in nome and not ('banana' in nome or 'maca' in nome):
         return False
     
-    codigos_removidos = ['97831', '97834', '97825', '97823', '97828', '97844', '97838', '99190', '99191', '99192']
+    codigos_removidos = ['97831', '97834', '97825', '97823', '97828', '97844', '97838', '99190', '99191', '99192', '100057', '100060']
     if cod_min in codigos_removidos:
         return False
 
+    # EANs de Inovação diretos permitidos (removidos os dois de 10,1kg: 7896029047620 e 7896029047736)
     eans_alvo = [
-        "7896029047606", "7896029047620", "7896029047736", "7896029047651",
+        "7896029047606", "7896029047651",
         "7896029047743", "7896029047842", "7896029047866", "7896029047880",
         "7896029047965", "7896029047941", "7896029047996", "7896029048078",
         "7896029048085"
@@ -282,7 +286,7 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos
     
     for item in produtos_presentes:
         analise_txt = "No Preço"
-        cor_estilo = colors.HexColor('#10B981') # Verde padrão
+        cor_estilo = colors.HexColor('#10B981')
         
         if item['preco_praticado'] > 0:
             diff = item['preco_praticado'] - item['preco_recomendado']
@@ -296,7 +300,6 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos
                 analise_txt = "No Preço (Ideal)"
                 cor_estilo = colors.HexColor('#10B981')
         
-        # Parágrafos formatados em negrito com a cor correta para o PDF
         p_analise = Paragraph(f"<b><font color='{cor_estilo.hexval()}'>{analise_txt}</font></b>", styles['Normal'])
         
         tabela_dados.append([
@@ -328,7 +331,6 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos
     tabela_faltantes = [["Produto Oportunidade", "Linha", "Cód", "Sugestão RSP (MG)"]]
     
     if oportunidades_faltantes:
-        # Agrupamento e ordenação por nome do produto
         oportunidades_ordenadas = sorted(oportunidades_faltantes, key=lambda x: x['produto'])
         for item in oportunidades_ordenadas:
             tabela_faltantes.append([
@@ -487,15 +489,23 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
 
         if termo_adicao:
             t_clean = termo_adicao.replace('.0', '').strip()
+            
+            indices_ja_adicionados = [item['index'] for item in st.session_state.itens_verificacao]
+
             if t_clean.isdigit():
                 df_busca_add = df_produtos[
-                    (df_produtos['EAN_LIMPO'].str.endswith(t_clean)) |
-                    (df_produtos['CODIGO_MINASSAL_LIMPO'].str.endswith(t_clean)) |
-                    (df_produtos['SKU_LIMPO'].str.endswith(t_clean))
+                    (
+                        (df_produtos['EAN_LIMPO'].str.endswith(t_clean)) |
+                        (df_produtos['CODIGO_MINASSAL_LIMPO'].str.endswith(t_clean)) |
+                        (df_produtos['SKU_LIMPO'].str.endswith(t_clean))
+                    ) & (~df_produtos.index.isin(indices_ja_adicionados))
                 ]
             else:
                 toks = [normalizar_texto(t) for t in t_clean.split() if t.strip()]
-                df_busca_add = df_produtos[df_produtos['BUSCA_COMPLETA'].apply(lambda txt: all(tk in txt for tk in toks))]
+                df_busca_add = df_produtos[
+                    df_produtos['BUSCA_COMPLETA'].apply(lambda txt: all(tk in txt for tk in toks)) &
+                    (~df_produtos.index.isin(indices_ja_adicionados))
+                ]
 
             if not df_busca_add.empty:
                 for idx_prod, r_prod in df_busca_add.iterrows():
@@ -531,22 +541,25 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                     with col_btn:
                         st.write("") 
                         if st.button("➕ Adicionar", key=f"btn_add_{idx_prod}"):
-                            novo_item = {
-                                'index': idx_prod,
-                                'row_data': r_prod,
-                                'produto': p_nome,
-                                'codigo': p_cod,
-                                'categoria': r_prod.get('SUBBRAND', 'Mars'),
-                                'preco_recomendado': p_rec,
-                                'preco_praticado': preco_digitado
-                            }
-                            if not any(item['index'] == idx_prod for item in st.session_state.itens_verificacao):
-                                st.session_state.itens_verificacao.append(novo_item)
-                                st.success(f"Adicionado!")
-                                st.rerun()
+                            if preco_digitado <= 0.0:
+                                st.warning(f"⚠️ Informe o preço praticado para o produto antes de adicionar!")
+                            else:
+                                novo_item = {
+                                    'index': idx_prod,
+                                    'row_data': r_prod,
+                                    'produto': p_nome,
+                                    'codigo': p_cod,
+                                    'categoria': r_prod.get('SUBBRAND', 'Mars'),
+                                    'preco_recomendado': p_rec,
+                                    'preco_praticado': preco_digitado
+                                }
+                                if not any(item['index'] == idx_prod for item in st.session_state.itens_verificacao):
+                                    st.session_state.itens_verificacao.append(novo_item)
+                                    st.success(f"Adicionado com sucesso!")
+                                    st.rerun()
                     st.markdown("<hr style='border: 0.3px solid #1E293B; margin: 8px 0;'>", unsafe_allow_html=True)
             else:
-                st.info("Nenhum produto encontrado com esse termo.")
+                st.info("Nenhum produto pendente encontrado com esse termo (ou o item já foi adicionado).")
 
         st.markdown("---")
         st.subheader(f"📋 Produtos Adicionados para esta Loja ({len(st.session_state.itens_verificacao)} itens)")
