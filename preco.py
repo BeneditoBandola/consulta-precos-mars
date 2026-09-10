@@ -5,7 +5,16 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 import re
+from io import BytesIO
+
+# Importações do ReportLab para geração de PDF
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
@@ -175,6 +184,13 @@ def eh_produto_inovacao_ou_smallbag(row):
     nome = normalizar_texto(row.get('PRODUTO', ''))
     ean = str(row.get('EAN_LIMPO', ''))
     
+    # 1. Regra de exclusão solicitada: Remover todos os Optimum e todos de 500g
+    if 'optimum' in nome:
+        return False
+    if '500g' in nome:
+        return False
+
+    # 2. EANs de Inovação diretos permitidos
     eans_alvo = [
         "7896029047606", "7896029047620", "7896029047736", "7896029047651",
         "7896029047743", "7896029047842", "7896029047866", "7896029047880",
@@ -189,6 +205,7 @@ def eh_produto_inovacao_ou_smallbag(row):
         if termo in nome:
             return True
             
+    # Small Bags: embalagens menores que 3kg (< 3000g ou < 3kg)
     if 'kg' in nome or 'g' in nome:
         if 'dry' in nome or 'racao' in nome or 'bag' in nome or 'adulto' in nome or 'filhote' in nome:
             match_g = re.search(r'(\d+)\s*g', nome)
@@ -201,6 +218,133 @@ def eh_produto_inovacao_ou_smallbag(row):
                     return True
 
     return False
+
+# Função para gerar o PDF em memória (BytesIO)
+def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos_presentes, oportunidades_faltantes):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    story = []
+    
+    styles = getSampleStyleSheet()
+    
+    # Estilos customizados
+    titulo_style = ParagraphStyle(
+        'TituloRelatorio',
+        parent=styles['Heading1'],
+        fontSize=18,
+        textColor=colors.HexColor('#0F172A'),
+        spaceAfter=6,
+        alignment=1
+    )
+    sub_style = ParagraphStyle(
+        'SubTitulo',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=colors.HexColor('#64748B'),
+        spaceAfter=15,
+        alignment=1
+    )
+    secao_style = ParagraphStyle(
+        'SecaoTitulo',
+        parent=styles['Heading2'],
+        fontSize=13,
+        textColor=colors.HexColor('#10B981'),
+        spaceBefore=12,
+        spaceAfter=6
+    )
+    texto_style = ParagraphStyle(
+        'TextoNormal',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=colors.HexColor('#334155')
+    )
+    
+    # Cabeçalho
+    story.append(Paragraph("RELATÓRIO DE VERIFICAÇÃO DE PDV", titulo_style))
+    story.append(Paragraph("Minassal / Mars — Poços de Caldas (MG)", sub_style))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#CBD5E1'), spaceAfter=15))
+    
+    # Dados da Loja
+    info_loja = f"""
+    <b>Cliente / Razão Social:</b> {razao_social}<br/>
+    <b>Endereço:</b> {endereco_cliente} — Bairro: {bairro_cliente}<br/>
+    <b>Promotora Responsável:</b> Pamela<br/>
+    <b>Localidade:</b> Poços de Caldas - MG
+    """
+    story.append(Paragraph(info_loja, texto_style))
+    story.append(Spacer(1, 15))
+    
+    # Tabela 1: Produtos Encontrados e Preços
+    story.append(Paragraph("<b>✅ Produtos Encontrados e Crítica de Preços (vs RSP MG)</b>", secao_style))
+    
+    tabela_dados = [["Produto", "Linha", "Cód", "Rec. MG", "Lido", "Análise"]]
+    
+    for item in produtos_presentes:
+        analise = "No Preço"
+        if item['preco_praticado'] > 0:
+            diff = item['preco_praticado'] - item['preco_recomendado']
+            if diff > 0.50:
+                analise = f"Acima (+R$ {diff:.2f})"
+            elif diff < -0.50:
+                analise = f"Abaixo (-R$ {abs(diff):.2f})"
+        
+        tabela_dados.append([
+            item['produto'][:32],
+            str(item['categoria']),
+            str(item['codigo']),
+            f"R$ {item['preco_recomendado']:.2f}",
+            f"R$ {item['preco_praticado']:.2f}",
+            analise
+        ])
+        
+    t1 = Table(tabela_dados, colWidths=[160, 80, 50, 70, 70, 120])
+    t1.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F1F5F9')),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor('#0F172A')),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,-1), 8.5),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('ALIGN', (0,1), (0,-1), 'LEFT'),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ('TOPPADDING', (0,0), (-1,-1), 5),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E2E8F0')),
+    ]))
+    story.append(t1)
+    story.append(Spacer(1, 15))
+    
+    # Tabela 2: Oportunidades / Faltantes
+    story.append(Paragraph("<b>🚨 Oportunidades de Inovações & Small Bags Ausentes</b>", secao_style))
+    
+    tabela_faltantes = [["Produto Oportunidade", "Linha", "Cód", "Sugestão RSP (MG)"]]
+    
+    if oportunidades_faltantes:
+        for item in oportunidades_faltantes:
+            tabela_faltantes.append([
+                item['produto'][:40],
+                str(item['categoria']),
+                str(item['codigo']),
+                f"R$ {item['preco_recomendado']:.2f}"
+            ])
+    else:
+        tabela_faltantes.append(["Nenhuma oportunidade em falta! Mix estratégico 100% executado.", "", "", ""])
+        
+    t2 = Table(tabela_faltantes, colWidths=[240, 100, 70, 140])
+    t2.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#FEF2F2')),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor('#991B1B')),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,-1), 8.5),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('ALIGN', (0,1), (0,-1), 'LEFT'),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ('TOPPADDING', (0,0), (-1,-1), 5),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#FCA5A5')),
+    ]))
+    story.append(t2)
+    
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
 
 # --- 4. MENU DE NAVEGAÇÃO ENTRE ABAS ---
 aba_selecionada = st.radio(
@@ -439,6 +583,9 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                                 'preco_recomendado': extrair_preco_mg(row)
                             })
 
+                # Gera o PDF em memória
+                pdf_buffer = gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos_presentes, oportunidades_faltantes)
+
                 corpo_html = f"""
                 <html>
                   <body style="font-family: Arial, sans-serif; color: #333;">
@@ -448,76 +595,12 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                     <p><b>Promotor:</b> Pamela</p>
                     <p><b>Localidade:</b> Poços de Caldas - MG</p>
                     <hr>
-                    
-                    <h3 style="color: #10B981;">✅ Produtos Encontrados e Crítica de Preços (vs RSP MG):</h3>
-                    <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 13px;">
-                      <tr style="background-color: #f2f2f2;">
-                        <th>Produto</th>
-                        <th>Linha</th>
-                        <th>Cód Minassal</th>
-                        <th>RSP Rec. (MG)</th>
-                        <th>Preço Praticado</th>
-                        <th>Crítica de Preço</th>
-                      </tr>
-                """
-                
-                for item in produtos_presentes:
-                    analise = "No Preço"
-                    cor_analise = "green"
-                    if item['preco_praticado'] > 0:
-                        diff = item['preco_praticado'] - item['preco_recomendado']
-                        if diff > 0.50:
-                            analise = f"Acima (+R$ {diff:.2f})"
-                            cor_analise = "orange"
-                        elif diff < -0.50:
-                            analise = f"Abaixo (-R$ {abs(diff):.2f})"
-                            cor_analise = "red"
-
-                    corpo_html += f"""
-                      <tr>
-                        <td>{item['produto']}</td>
-                        <td>{item['categoria']}</td>
-                        <td>{item['codigo']}</td>
-                        <td>R$ {item['preco_recomendado']:.2f}</td>
-                        <td>R$ {item['preco_praticado']:.2f}</td>
-                        <td style="color: {cor_analise}; font-weight: bold;">{analise}</td>
-                      </tr>
-                    """
-                    
-                corpo_html += f"""
-                    </table>
-                    
-                    <h3 style="color: #E2001A; margin-top: 20px;">🚨 Oportunidades de Inovações & Small Bags Ausentes:</h3>
-                    <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 13px;">
-                      <tr style="background-color: #fcf2f2;">
-                        <th>Produto Oportunidade</th>
-                        <th>Linha</th>
-                        <th>Cód Minassal</th>
-                        <th>Sugestão RSP (MG)</th>
-                      </tr>
-                """
-                
-                if oportunidades_faltantes:
-                    for item in oportunidades_faltantes:
-                        corpo_html += f"""
-                          <tr>
-                            <td><b>{item['produto']}</b></td>
-                            <td>{item['categoria']}</td>
-                            <td>{item['codigo']}</td>
-                            <td>R$ {item['preco_recomendado']:.2f}</td>
-                          </tr>
-                        """
-                else:
-                    corpo_html += "<tr><td colspan='4'>Parabéns! Nenhuma oportunidade em falta. Mix estratégico 100% executado.</td></tr>"
-                    
-                corpo_html += f"""
-                    </table>
+                    <p>Segue em anexo o relatório executivo em formato <b>PDF</b> contendo a verificação de preços e as oportunidades estratégicas (Inovações e Small Bags) para esta loja.</p>
                     <p style="font-size: 11px; color: #777; margin-top: 30px;">Relatório gerado automaticamente pelo App de Gestão de Campo - Minassal / Mars (Poços de Caldas - MG).</p>
                   </body>
                 </html>
                 """
 
-                # LEITURA ROBUSTA DOS SECRETS
                 remetente = "benedito.bandola@gmail.com"
                 senha_app = ""
 
@@ -543,19 +626,28 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                                 "rubens.porfirio@minassal.com.br"
                             ]
 
-                        msg = MIMEMultipart("alternative")
-                        msg["Subject"] = f"Verificação de Cliente: {razao_social} - Poços de Caldas"
+                        msg = MIMEMultipart()
+                        msg["Subject"] = f"Verificação de Cliente (PDF): {razao_social} - Poços de Caldas"
                         msg["From"] = remetente
                         msg["To"] = ", ".join(lista_destinatarios)
                         
+                        # Anexa o corpo em HTML
                         msg.attach(MIMEText(corpo_html, "html"))
+
+                        # Anexa o arquivo PDF gerado
+                        parte_pdf = MIMEBase('application', 'octet-stream')
+                        parte_pdf.set_payload(pdf_buffer.read())
+                        encoders.encode_base64(parte_pdf)
+                        nome_arquivo_pdf = f"Relatorio_Auditoria_{razao_social.replace(' ', '_')}.pdf"
+                        parte_pdf.add_header('Content-Disposition', f'attachment; filename="{nome_arquivo_pdf}"')
+                        msg.attach(parte_pdf)
 
                         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
                             server.login(remetente, senha_app)
                             server.sendmail(remetente, lista_destinatarios, msg.as_string())
                             
-                        st.success(f"🎉 Verificação enviada com sucesso por e-mail para: {', '.join(lista_destinatarios)}!")
+                        st.success(f"🎉 Relatório em PDF enviado com sucesso para: {', '.join(lista_destinatarios)}!")
                         st.session_state.itens_verificacao = []
                     except Exception as mail_err:
                         st.error(f"❌ Erro ao enviar o e-mail via SMTP: {mail_err}")
-                        st.info("💡 Dica: Verifique se a senha de 16 dígitos nos Secrets está correta e se a Confirmação em Duas Etapas está ativa no Gmail.")
+                        st.info("💡 Dica: Verifique se a senha de 16 dígitos nos Secrets está correta.")
