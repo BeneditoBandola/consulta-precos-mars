@@ -136,7 +136,8 @@ def carregar_clientes_pocos():
         df_cli.columns = [str(c).strip().upper() for c in df_cli.columns]
         
         if 'CIDADE' in df_cli.columns:
-            pocos = df_cli[df_cli['CIDADE'].str.contains('POÇOS|POCAS|POCAN|POC', case=False, na=False)]
+            # Filtro flexível para capturar POCOS DE CALDAS (sem acento/ç)
+            pocos = df_cli[df_cli['CIDADE'].str.contains('POCOS|POÇOS', case=False, na=False)]
             lista_lojas = pocos['NOME'].dropna().unique().tolist()
             return sorted(lista_lojas)
     except Exception:
@@ -171,7 +172,6 @@ def extrair_preco_mg(row):
     except:
         return 0.0
 
-# Regra para identificar Inovações, Foco e Small Bags (< 3kg)
 def eh_produto_inovacao_ou_smallbag(row):
     nome = normalizar_texto(row.get('PRODUTO', ''))
     ean = str(row.get('EAN_LIMPO', ''))
@@ -190,7 +190,6 @@ def eh_produto_inovacao_ou_smallbag(row):
         if termo in nome:
             return True
             
-    # Small Bags: embalagens menores que 3kg (< 3000g ou < 3kg)
     if 'kg' in nome or 'g' in nome:
         if 'dry' in nome or 'racao' in nome or 'bag' in nome or 'adulto' in nome or 'filhote' in nome:
             match_g = re.search(r'(\d+)\s*g', nome)
@@ -349,7 +348,6 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                                 'preco_praticado': info['preco_praticado']
                             })
                         else:
-                            # Se não foi encontrado, verifica se é Inovação ou Small Bag (< 3kg)
                             if eh_produto_inovacao_ou_smallbag(row):
                                 oportunidades_faltantes.append({
                                     'produto': nome_prod,
@@ -358,7 +356,6 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                                     'preco_recomendado': preco_rec
                                 })
 
-                    # Montando o relatório HTML
                     corpo_html = f"""
                     <html>
                       <body style="font-family: Arial, sans-serif; color: #333;">
@@ -407,7 +404,6 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                         </table>
                         
                         <h3 style="color: #E2001A; margin-top: 20px;">🚨 Oportunidades de Inovações & Small Bags Ausentes:</h3>
-                        <p style="font-size: 12px; color: #555;">Itens estratégicos de inovação e embalagens menores que 3kg que não estavam presentes na loja:</p>
                         <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 13px;">
                           <tr style="background-color: #fcf2f2;">
                             <th>Produto Oportunidade</th>
