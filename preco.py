@@ -183,14 +183,15 @@ def extrair_preco_mg(row):
 def eh_produto_inovacao_ou_smallbag(row):
     nome = normalizar_texto(row.get('PRODUTO', ''))
     ean = str(row.get('EAN_LIMPO', ''))
+    cod_min = str(row.get('CODIGO_MINASSAL_LIMPO', ''))
     
-    # 1. Regra de exclusão solicitada: Remover todos os Optimum e todos de 500g
-    if 'optimum' in nome:
+    # EXCLUSÃO TOTAL: Optimum e embalagens de 500g
+    if 'optimum' in nome or 'opt cat' in nome or cod_min in ['97831', '97834', '97825', '97823', '97828']:
         return False
     if '500g' in nome:
         return False
 
-    # 2. EANs de Inovação diretos permitidos
+    # EANs de Inovação diretos permitidos
     eans_alvo = [
         "7896029047606", "7896029047620", "7896029047736", "7896029047651",
         "7896029047743", "7896029047842", "7896029047866", "7896029047880",
@@ -227,7 +228,6 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos
     
     styles = getSampleStyleSheet()
     
-    # Estilos customizados
     titulo_style = ParagraphStyle(
         'TituloRelatorio',
         parent=styles['Heading1'],
@@ -259,12 +259,10 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos
         textColor=colors.HexColor('#334155')
     )
     
-    # Cabeçalho
     story.append(Paragraph("RELATÓRIO DE VERIFICAÇÃO DE PDV", titulo_style))
     story.append(Paragraph("Minassal / Mars — Poços de Caldas (MG)", sub_style))
     story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#CBD5E1'), spaceAfter=15))
     
-    # Dados da Loja
     info_loja = f"""
     <b>Cliente / Razão Social:</b> {razao_social}<br/>
     <b>Endereço:</b> {endereco_cliente} — Bairro: {bairro_cliente}<br/>
@@ -274,7 +272,6 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos
     story.append(Paragraph(info_loja, texto_style))
     story.append(Spacer(1, 15))
     
-    # Tabela 1: Produtos Encontrados e Preços
     story.append(Paragraph("<b>✅ Produtos Encontrados e Crítica de Preços (vs RSP MG)</b>", secao_style))
     
     tabela_dados = [["Produto", "Linha", "Cód", "Rec. MG", "Lido", "Análise"]]
@@ -312,7 +309,6 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos
     story.append(t1)
     story.append(Spacer(1, 15))
     
-    # Tabela 2: Oportunidades / Faltantes
     story.append(Paragraph("<b>🚨 Oportunidades de Inovações & Small Bags Ausentes</b>", secao_style))
     
     tabela_faltantes = [["Produto Oportunidade", "Linha", "Cód", "Sugestão RSP (MG)"]]
@@ -583,7 +579,6 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                                 'preco_recomendado': extrair_preco_mg(row)
                             })
 
-                # Gera o PDF em memória
                 pdf_buffer = gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos_presentes, oportunidades_faltantes)
 
                 corpo_html = f"""
@@ -631,10 +626,8 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                         msg["From"] = remetente
                         msg["To"] = ", ".join(lista_destinatarios)
                         
-                        # Anexa o corpo em HTML
                         msg.attach(MIMEText(corpo_html, "html"))
 
-                        # Anexa o arquivo PDF gerado
                         parte_pdf = MIMEBase('application', 'octet-stream')
                         parte_pdf.set_payload(pdf_buffer.read())
                         encoders.encode_base64(parte_pdf)
