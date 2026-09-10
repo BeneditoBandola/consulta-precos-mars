@@ -70,10 +70,8 @@ div[data-testid="stImage"] {
     display: flex;
     justify-content: center;
     align-items: center;
-    margin-bottom: 15px;
 }
 div[data-testid="stImage"] img {
-    max-height: 280px !important;
     object-fit: contain !important;
 }
 input, select, textarea {
@@ -321,18 +319,31 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                 for idx_prod, r_prod in df_busca_add.iterrows():
                     p_nome = r_prod.get('PRODUTO', 'Produto')
                     p_cod = r_prod.get('CODIGO_MINASSAL_LIMPO', '')
+                    p_ean = r_prod.get('EAN_LIMPO', '')
+                    p_sku = r_prod.get('SKU_LIMPO', '')
                     p_rec = extrair_preco_mg(r_prod)
                     
                     p_rec_str = f"R$ {p_rec:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') if p_rec > 0 else "Não cadastrado"
+                    caminho_img = obter_caminho_imagem(p_cod) or obter_caminho_imagem(p_ean) or obter_caminho_imagem(p_sku)
 
-                    col_b1, col_b2, col_b3 = st.columns([3, 1.5, 1])
-                    with col_b1:
-                        st.write(f"**{p_nome}** (Cód: {p_cod})")
-                        st.markdown(f"<span style='color: #34D399; font-size: 13px; font-weight: 700;'>💰 Recomendado (MG): {p_rec_str}</span>", unsafe_allow_html=True)
-                    with col_b2:
-                        preco_digitado = st.number_input("Preço R$", min_value=0.0, format="%.2f", key=f"add_prc_{idx_prod}")
-                    with col_b3:
-                        st.write("") # Espaçamento para alinhar botão
+                    # Layout em colunas: [Foto Mini] | [Dados/Preço Recomendado] | [Input Preço Loja] | [Botão]
+                    col_img, col_info, col_prc, col_btn = st.columns([0.8, 2.5, 1.5, 1])
+                    
+                    with col_img:
+                        if caminho_img and os.path.exists(caminho_img):
+                            st.image(caminho_img, width=60)
+                        else:
+                            st.markdown("<span style='color: #64748B; font-size: 11px;'>Sem foto</span>", unsafe_allow_html=True)
+                            
+                    with col_info:
+                        st.write(f"**{p_nome}**")
+                        st.markdown(f"<span style='color: #94A3B8; font-size: 11.5px;'>Cód: {p_cod}</span><br><span style='color: #34D399; font-size: 12.5px; font-weight: 700;'>💰 Rec. MG: {p_rec_str}</span>", unsafe_allow_html=True)
+                        
+                    with col_prc:
+                        preco_digitado = st.number_input("Preço R$", min_value=0.0, format="%.2f", key=f"add_prc_{idx_prod}", label_visibility="collapsed")
+                        
+                    with col_btn:
+                        st.write("") 
                         if st.button("➕ Adicionar", key=f"btn_add_{idx_prod}"):
                             novo_item = {
                                 'index': idx_prod,
@@ -345,8 +356,9 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                             }
                             if not any(item['index'] == idx_prod for item in st.session_state.itens_verificacao):
                                 st.session_state.itens_verificacao.append(novo_item)
-                                st.success(f"Adicionado: {p_nome}")
+                                st.success(f"Adicionado!")
                                 st.rerun()
+                    st.markdown("<hr style='border: 0.3px solid #1E293B; margin: 5px 0;'>", unsafe_allow_html=True)
             else:
                 st.info("Nenhum produto encontrado com esse termo.")
 
