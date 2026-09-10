@@ -185,10 +185,16 @@ def eh_produto_inovacao_ou_smallbag(row):
     ean = str(row.get('EAN_LIMPO', ''))
     cod_min = str(row.get('CODIGO_MINASSAL_LIMPO', ''))
     
-    # EXCLUSÃO TOTAL: Optimum e embalagens de 500g
-    if 'optimum' in nome or 'opt cat' in nome or cod_min in ['97831', '97834', '97825', '97823', '97828']:
+    # Exclusão total de Optimum, Champion e 500g genéricos
+    if 'optimum' in nome or 'opt cat' in nome or 'opt dog' in nome:
         return False
-    if '500g' in nome:
+    if 'champion' in nome or 'champ' in nome:
+        return False
+    if '500g' in nome and not ('banana' in nome or 'maca' in nome):
+        return False
+    
+    codigos_removidos = ['97831', '97834', '97825', '97823', '97828', '97844', '97838', '99190', '99191', '99192']
+    if cod_min in codigos_removidos:
         return False
 
     # EANs de Inovação diretos permitidos
@@ -201,10 +207,12 @@ def eh_produto_inovacao_ou_smallbag(row):
     if ean in eans_alvo:
         return True
         
-    termos_chave = ['filezito', 'sheba creamy', 'banana e maca']
-    for termo in termos_chave:
-        if termo in nome:
-            return True
+    # Termos de foco: Filezitos, Sheba Creamy e especificamente os Biscroks de Banana e Maçã de 500g
+    if 'filezito' in nome or 'sheba creamy' in nome:
+        return True
+        
+    if 'biscrok' in nome and ('banana' in nome or 'maca' in nome):
+        return True
             
     # Small Bags: embalagens menores que 3kg (< 3000g ou < 3kg)
     if 'kg' in nome or 'g' in nome:
