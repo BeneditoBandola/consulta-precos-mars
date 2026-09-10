@@ -185,7 +185,6 @@ def eh_produto_inovacao_ou_smallbag(row):
     ean = str(row.get('EAN_LIMPO', ''))
     cod_min = str(row.get('CODIGO_MINASSAL_LIMPO', ''))
     
-    # Exclusão total de Optimum, Champion, sacos de 10,1kg de Superfoods e 500g genéricos
     if 'optimum' in nome or 'opt cat' in nome or 'opt dog' in nome:
         return False
     if 'champion' in nome or 'champ' in nome:
@@ -199,7 +198,6 @@ def eh_produto_inovacao_ou_smallbag(row):
     if cod_min in codigos_removidos:
         return False
 
-    # EANs de Inovação diretos permitidos (removidos os dois de 10,1kg: 7896029047620 e 7896029047736)
     eans_alvo = [
         "7896029047606", "7896029047651",
         "7896029047743", "7896029047842", "7896029047866", "7896029047880",
@@ -228,7 +226,7 @@ def eh_produto_inovacao_ou_smallbag(row):
 
     return False
 
-# Função para gerar o PDF em memória com cores condicionais e agrupamento
+# Função para gerar o PDF em memória com rigor total na diferença de preço (sem tolerância)
 def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos_presentes, oportunidades_faltantes):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
@@ -286,19 +284,20 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos
     
     for item in produtos_presentes:
         analise_txt = "No Preço"
-        cor_estilo = colors.HexColor('#10B981')
+        cor_estilo = colors.HexColor('#10B981') # Verde
         
         if item['preco_praticado'] > 0:
             diff = item['preco_praticado'] - item['preco_recomendado']
-            if diff > 0.50:
+            # Sem tolerância: qualquer valor > 0 acima do recomendado já é considerado acima
+            if diff > 0.00:
                 analise_txt = f"Acima (+R$ {diff:.2f})"
                 cor_estilo = colors.HexColor('#DC2626') # Vermelho
-            elif diff < -0.50:
+            elif diff < 0.00:
                 analise_txt = f"Abaixo (-R$ {abs(diff):.2f})"
                 cor_estilo = colors.HexColor('#10B981') # Verde
             else:
                 analise_txt = "No Preço (Ideal)"
-                cor_estilo = colors.HexColor('#10B981')
+                cor_estilo = colors.HexColor('#10B981') # Verde
         
         p_analise = Paragraph(f"<b><font color='{cor_estilo.hexval()}'>{analise_txt}</font></b>", styles['Normal'])
         
