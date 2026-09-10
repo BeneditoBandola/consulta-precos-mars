@@ -293,20 +293,16 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
     elif not lista_clientes_pocos:
         st.error("⚠️ Planilha de clientes de Poços de Caldas não encontrada ou vazia.")
     else:
-        # Inicializa a lista de itens da visita na memória da sessão se não existir
         if 'itens_verificacao' not in st.session_state:
             st.session_state.itens_verificacao = []
 
         opcoes_clientes = ["Selecione o Cliente em Poços de Caldas..."] + lista_clientes_pocos
         razao_social = st.selectbox("Razão Social do Cliente:", opcoes_clientes)
-        
-        # Promotora fixa: Pamela
         promotor_nome = st.text_input("Promotor Responsável:", value="Pamela", disabled=True)
 
         st.markdown("---")
         st.subheader("🔍 Adicionar Produtos Encontrados na Loja")
         
-        # Caixa de busca rápida para adicionar o produto sem rolar lista
         termo_adicao = st.text_input("Digite o nome ou código do produto para adicionar:", placeholder="Ex: Whiskas, Pedigree, 97283...")
 
         if termo_adicao:
@@ -327,14 +323,17 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                     p_cod = r_prod.get('CODIGO_MINASSAL_LIMPO', '')
                     p_rec = extrair_preco_mg(r_prod)
                     
+                    p_rec_str = f"R$ {p_rec:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') if p_rec > 0 else "Não cadastrado"
+
                     col_b1, col_b2, col_b3 = st.columns([3, 1.5, 1])
                     with col_b1:
                         st.write(f"**{p_nome}** (Cód: {p_cod})")
+                        st.markdown(f"<span style='color: #34D399; font-size: 13px; font-weight: 700;'>💰 Recomendado (MG): {p_rec_str}</span>", unsafe_allow_html=True)
                     with col_b2:
                         preco_digitado = st.number_input("Preço R$", min_value=0.0, format="%.2f", key=f"add_prc_{idx_prod}")
                     with col_b3:
+                        st.write("") # Espaçamento para alinhar botão
                         if st.button("➕ Adicionar", key=f"btn_add_{idx_prod}"):
-                            # Adiciona à lista da sessão
                             novo_item = {
                                 'index': idx_prod,
                                 'row_data': r_prod,
@@ -344,7 +343,6 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                                 'preco_recomendado': p_rec,
                                 'preco_praticado': preco_digitado
                             }
-                            # Evita duplicar o mesmo produto
                             if not any(item['index'] == idx_prod for item in st.session_state.itens_verificacao):
                                 st.session_state.itens_verificacao.append(novo_item)
                                 st.success(f"Adicionado: {p_nome}")
@@ -360,6 +358,7 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                 c_inf1, c_inf2, c_inf3 = st.columns([3, 2, 1])
                 with c_inf1:
                     st.write(f"• **{item_visita['produto']}** (Cód: {item_visita['codigo']})")
+                    st.write(f"<span style='color: #94A3B8; font-size: 11.5px;'>Rec. MG: R$ {item_visita['preco_recomendado']:.2f}</span>", unsafe_allow_html=True)
                 with c_inf2:
                     st.write(f"Preço Lido: **R$ {item_visita['preco_praticado']:.2f}**")
                 with c_inf3:
@@ -377,8 +376,6 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                 st.warning("⚠️ Adicione pelo menos um produto antes de enviar a verificação.")
             else:
                 produtos_presentes = st.session_state.itens_verificacao
-                
-                # Identifica quais inovações e small bags ficaram de fora (não foram adicionados)
                 indices_presentes = [item['index'] for item in produtos_presentes]
                 oportunidades_faltantes = []
                 
@@ -491,7 +488,7 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                         server.sendmail(remetente, destinatario, msg.as_string())
                         
                     st.success("🎉 Verificação enviada com sucesso para a gestão!")
-                    st.session_state.itens_verificacao = [] # Limpa após enviar
+                    st.session_state.itens_verificacao = []
                 except Exception as mail_err:
                     st.success(f"🎉 Verificação do cliente **{razao_social}** registrada com sucesso pela promotora Pamela!")
                     st.info("💡 (Dica: Para o envio automático por e-mail, configure as credenciais SMTP no app ou nos Secrets do Streamlit).")
