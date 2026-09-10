@@ -92,7 +92,7 @@ def limpar_campo_codigo(val):
 
 @st.cache_data
 def carregar_dados():
-    arquivo_base = "MARS MG RECO.xlsx"
+    arquivo_base = "skeletor_com_codigo_minassal.xlsx"
     if not os.path.exists(arquivo_base):
         return None
     try:
@@ -144,7 +144,7 @@ codigo_busca = st.text_input("🔍 Buscar Produto:", placeholder="Ex: 79607, whi
 
 # --- 6. PROCESSAR A BUSCA ---
 if df_produtos is None:
-    st.error("⚠️ Planilha `MARS MG RECO.xlsx` não encontrada no repositório do GitHub.")
+    st.error("⚠️ Planilha `skeletor_com_codigo_minassal.xlsx` não encontrada no repositório do GitHub.")
 elif codigo_busca:
     busca_raw = str(codigo_busca).strip()
     busca_limpa = busca_raw.replace('.0', '').strip()
@@ -179,9 +179,9 @@ elif codigo_busca:
             cod_minassal = row.get('CODIGO_MINASSAL_LIMPO', 'N/D')
             familia_val = str(row.get('SUBBRAND', row.get('CATEGORIA', 'Mars')))
             
-            # Pega o preço recomendado
+            # Pega o preço recomendado da coluna correta
             preco_raw = 0.0
-            for col_preco in ['RSP_RECOMENDADO', 'RSP \nRECOMENDADO', 'RSP RECOMENDADO', 'RSP']:
+            for col_preco in ['RSP \nRECOMENDADO', 'RSP \nRecomendado', 'RSP RECOMENDADO', 'RSP']:
                 if col_preco in row and pd.notna(row[col_preco]):
                     preco_raw = row[col_preco]
                     break
