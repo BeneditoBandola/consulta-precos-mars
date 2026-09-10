@@ -127,22 +127,24 @@ def carregar_dados():
 def carregar_clientes_pocos():
     arquivo_clientes = "clientes com coordenadas.xlsx"
     if not os.path.exists(arquivo_clientes):
-        return []
+        return pd.DataFrame()
     try:
         xls = pd.ExcelFile(arquivo_clientes)
         df_cli = pd.read_excel(arquivo_clientes, sheet_name=xls.sheet_names[0])
         df_cli.columns = [str(c).strip().upper() for c in df_cli.columns]
         
         if 'CIDADE' in df_cli.columns:
-            pocos = df_cli[df_cli['CIDADE'].str.contains('POCOS|POÇOS', case=False, na=False)]
-            lista_lojas = pocos['NOME'].dropna().unique().tolist()
-            return sorted(lista_lojas)
+            pocos = df_cli[df_cli['CIDADE'].str.contains('POCOS|POÇOS', case=False, na=False)].copy()
+            pocos['NOME'] = pocos['NOME'].astype(str).str.strip()
+            pocos['ENDEREÇO'] = pocos['ENDEREÇO'].fillna('').astype(str).str.strip()
+            pocos['BAIRRO'] = pocos['BAIRRO'].fillna('').astype(str).str.strip()
+            return pocos
     except Exception:
         pass
-    return []
+    return pd.DataFrame()
 
 df_produtos = carregar_dados()
-lista_clientes_pocos = carregar_clientes_pocos()
+df_clientes_pocos = carregar_clientes_pocos()
 
 PASTA_FOTOS = "mockups_produtos"
 
@@ -284,18 +286,48 @@ if aba_selecionada == "🔍 Consulta Rápida de Preços":
 # ==========================================
 elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
     st.markdown("<h2 style='text-align: center; color: #F8FAFC; margin-bottom: 5px;'>🏪 Verificação de Cliente - Poços de Caldas</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; font-size: 13px; color: #94A3B8;'>Selecione o cliente, busque os produtos encontrados na gôndola e registre os preços praticados.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; font-size: 13px; color: #94A3B8;'>Busque o cliente pelo nome, adicione os produtos encontrados e registre os preços praticados.</p>", unsafe_allow_html=True)
 
     if df_produtos is None:
         st.error("⚠️ Planilha de produtos não encontrada.")
-    elif not lista_clientes_pocos:
+    elif df_clientes_pocos.empty:
         st.error("⚠️ Planilha de clientes de Poços de Caldas não encontrada ou vazia.")
     else:
         if 'itens_verificacao' not in st.session_state:
             st.session_state.itens_verificacao = []
 
-        opcoes_clientes = ["Selecione o Cliente em Poços de Caldas..."] + lista_clientes_pocos
-        razao_social = st.selectbox("Razão Social do Cliente:", opcoes_clientes)
+        # Autocomplete Inteligente / Busca de Cliente
+        termo_cliente = st.text_input("🔍 Digite o nome do cliente para buscar:", placeholder="Ex: Da Roça, Itamaraty, PetShop...")
+        
+        cliente_selecionado = None
+        endereco_cliente = ""
+        bairro_cliente = ""
+
+        if termo_cliente:
+            df_cli_match = df_clientes_pocos[df_clientes_pocos['NOME'].str.contains(termo_cliente, case=False, na=False)]
+            if not df_cli_match.empty:
+                nomes_encontrados = df_cli_match['NOME'].tolist()
+                razao_social = st.selectbox("Selecione o Cliente Encontrado:", nomes_encontrados)
+                
+                # Pega o endereço e bairro correspondente
+                row_cli = df_cli_match[df_cli_match['NOME'] == razao_social].iloc[0]
+                endereco_cliente = str(row_cli.get('ENDEREÇO', ''))
+                bairro_cliente = str(row_cli.get('BAIRRO', ''))
+            else:
+                st.warning("Nenhum cliente encontrado com esse nome em Poços de Caldas.")
+                razao_social = None
+        else:
+            razao_social = None
+
+        # Exibe endereço e bairro se o cliente estiver selecionado
+        if razao_social:
+            st.markdown(f"""
+            <div style="background-color: #1E293B; border-left: 4px solid #34D399; padding: 10px 15px; border-radius: 8px; margin-bottom: 15px;">
+                <span style="font-size: 12px; color: #94A3B8; text-transform: uppercase; font-weight: 700;">Endereço da Loja:</span><br>
+                <span style="font-size: 14px; color: #F8FAFC; font-weight: 600;">📍 {endereco_cliente} - Bairro: {bairro_cliente}</span>
+            </div>
+            """, unsafe_allow_html=True)
+
         promotor_nome = st.text_input("Promotor Responsável:", value="Pamela", disabled=True)
 
         st.markdown("---")
@@ -326,7 +358,7 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                     p_rec_str = f"R$ {p_rec:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') if p_rec > 0 else "Não cadastrado"
                     caminho_img = obter_caminho_imagem(p_cod) or obter_caminho_imagem(p_ean) or obter_caminho_imagem(p_sku)
 
-                    # Layout em colunas: [Foto Mini] | [Dados/Preço Recomendado] | [Input Preço Loja] | [Botão]
+                    # Layout em colunas com textos aumentados (nome, código e recomendado no mesmo tamanho)
                     col_img, col_info, col_prc, col_btn = st.columns([0.8, 2.5, 1.5, 1])
                     
                     with col_img:
@@ -336,8 +368,13 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                             st.markdown("<span style='color: #64748B; font-size: 11px;'>Sem foto</span>", unsafe_allow_html=True)
                             
                     with col_info:
-                        st.write(f"**{p_nome}**")
-                        st.markdown(f"<span style='color: #94A3B8; font-size: 11.5px;'>Cód: {p_cod}</span><br><span style='color: #34D399; font-size: 12.5px; font-weight: 700;'>💰 Rec. MG: {p_rec_str}</span>", unsafe_allow_html=True)
+                        st.markdown(f"""
+                        <div style="line-height: 1.3; margin-bottom: 4px;">
+                            <span style="color: #F8FAFC; font-size: 16px; font-weight: 700;">{p_nome}</span><br>
+                            <span style="color: #94A3B8; font-size: 15px; font-weight: 600;">Cód: {p_cod}</span><br>
+                            <span style="color: #34D399; font-size: 16px; font-weight: 800;">💰 Rec. MG: {p_rec_str}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
                         
                     with col_prc:
                         preco_digitado = st.number_input("Preço R$", min_value=0.0, format="%.2f", key=f"add_prc_{idx_prod}", label_visibility="collapsed")
@@ -358,7 +395,7 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                                 st.session_state.itens_verificacao.append(novo_item)
                                 st.success(f"Adicionado!")
                                 st.rerun()
-                    st.markdown("<hr style='border: 0.3px solid #1E293B; margin: 5px 0;'>", unsafe_allow_html=True)
+                    st.markdown("<hr style='border: 0.3px solid #1E293B; margin: 8px 0;'>", unsafe_allow_html=True)
             else:
                 st.info("Nenhum produto encontrado com esse termo.")
 
@@ -370,7 +407,7 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                 c_inf1, c_inf2, c_inf3 = st.columns([3, 2, 1])
                 with c_inf1:
                     st.write(f"• **{item_visita['produto']}** (Cód: {item_visita['codigo']})")
-                    st.write(f"<span style='color: #94A3B8; font-size: 11.5px;'>Rec. MG: R$ {item_visita['preco_recomendado']:.2f}</span>", unsafe_allow_html=True)
+                    st.write(f"<span style='color: #34D399; font-size: 13px; font-weight: 700;'>Rec. MG: R$ {item_visita['preco_recomendado']:.2f}</span>", unsafe_allow_html=True)
                 with c_inf2:
                     st.write(f"Preço Lido: **R$ {item_visita['preco_praticado']:.2f}**")
                 with c_inf3:
@@ -382,8 +419,8 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
 
         st.markdown("---")
         if st.button("🚀 Enviar Verificação e Relatório por E-mail"):
-            if razao_social == "Selecione o Cliente em Poços de Caldas...":
-                st.warning("⚠️ Por favor, selecione o Cliente antes de enviar.")
+            if not razao_social:
+                st.warning("⚠️ Por favor, busque e selecione o Cliente antes de enviar.")
             elif not st.session_state.itens_verificacao:
                 st.warning("⚠️ Adicione pelo menos um produto antes de enviar a verificação.")
             else:
@@ -406,6 +443,7 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                   <body style="font-family: Arial, sans-serif; color: #333;">
                     <h2 style="color: #0F172A;">🏪 Relatório de Verificação de Cliente</h2>
                     <p><b>Cliente / Razão Social:</b> {razao_social}</p>
+                    <p><b>Endereço:</b> {endereco_cliente} - Bairro: {bairro_cliente}</p>
                     <p><b>Promotor:</b> Pamela</p>
                     <p><b>Localidade:</b> Poços de Caldas - MG</p>
                     <hr>
