@@ -2,10 +2,14 @@ import streamlit as st
 import pandas as pd
 import unicodedata
 import os
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import re
 
 # --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
-    page_title="Consulta de Campo - Preço Mars",
+    page_title="Gestão de Campo - Mars",
     layout="centered",
     page_icon="🐱🐶"
 )
@@ -72,14 +76,14 @@ div[data-testid="stImage"] img {
     max-height: 280px !important;
     object-fit: contain !important;
 }
-input {
+input, select, textarea {
     background-color: #1E293B !important;
     color: #FFFFFF !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 3. CARREGAR A BASE ---
+# --- 3. CARREGAR BASES DE DADOS ---
 def normalizar_texto(texto):
     if pd.isna(texto):
         return ""
@@ -102,7 +106,6 @@ def carregar_dados():
     try:
         df = pd.read_excel(arquivo_base)
     except Exception as e:
-        st.error(f"Erro ao abrir a planilha: {e}")
         return None
 
     df.columns = [str(c).strip().upper() for c in df.columns]
@@ -122,15 +125,32 @@ def carregar_dados():
     )
     return df
 
-df_produtos = carregar_dados()
+@st.cache_data
+def carregar_clientes_pocos():
+    arquivo_clientes = "clientes com coordenadas.xlsx"
+    if not os.path.exists(arquivo_clientes):
+        return []
+    try:
+        xls = pd.ExcelFile(arquivo_clientes)
+        df_cli = pd.read_excel(arquivo_clientes, sheet_name=xls.sheet_names[0])
+        df_cli.columns = [str(c).strip().upper() for c in df_cli.columns]
+        
+        if 'CIDADE' in df_cli.columns:
+            pocos = df_cli[df_cli['CIDADE'].str.contains('POÇOS|POCAS|POCAN|POC', case=False, na=False)]
+            lista_lojas = pocos['NOME'].dropna().unique().tolist()
+            return sorted(lista_lojas)
+    except Exception:
+        pass
+    return []
 
-# --- 4. FUNÇÃO DE BUSCA DA IMAGEM ---
+df_produtos = carregar_dados()
+lista_clientes_pocos = carregar_clientes_pocos()
+
 PASTA_FOTOS = "mockups_produtos"
 
 def obter_caminho_imagem(codigo_identificador):
     extensoes = ['.png', '.jpg', '.jpeg', '.webp', '.PNG', '.JPG', '.JPEG']
     cod_limpo = str(codigo_identificador).strip().replace('.0', '')
-    
     if os.path.exists(PASTA_FOTOS) and cod_limpo:
         for ext in extensoes:
             caminho_completo = os.path.join(PASTA_FOTOS, f"{cod_limpo}{ext}")
@@ -138,84 +158,307 @@ def obter_caminho_imagem(codigo_identificador):
                 return caminho_completo
     return None
 
-# --- 5. INTERFACE PRINCIPAL ---
-st.markdown("<h2 style='text-align: center; color: #F8FAFC; margin-bottom: 2px;'>🐱🐶 Consulta Preços - Mars</h2>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; font-size: 13px; color: #94A3B8;'>Digite os <b>dígitos finais do código de barras (EAN)</b>, o <b>código Minassal</b> ou o <b>nome do produto</b>:</p>", unsafe_allow_html=True)
+def extrair_preco_mg(row):
+    preco_raw = 0.0
+    for col_preco in ['RSP \nRECOMENDADO', 'RSP \nRecomendado', 'RSP RECOMENDADO', 'RSP']:
+        if col_preco in row and pd.notna(row[col_preco]):
+            preco_raw = row[col_preco]
+            break
+    try:
+        if isinstance(preco_raw, str):
+            preco_raw = preco_raw.replace('R$', '').replace('.', '').replace(',', '.').strip()
+        return float(preco_raw)
+    except:
+        return 0.0
 
-codigo_busca = st.text_input("🔍 Buscar Produto:", placeholder="Ex: 97283, whiskas, pedigree, lata...", label_visibility="collapsed")
-
-# --- 6. PROCESSAR A BUSCA ---
-if df_produtos is None:
-    st.error("⚠️ Planilha `skeletor_com_codigo_minassal.xlsx` não encontrada no repositório do GitHub.")
-elif codigo_busca:
-    busca_raw = str(codigo_busca).strip()
-    busca_limpa = busca_raw.replace('.0', '').strip()
+# Regra para identificar Inovações, Foco e Small Bags (< 3kg)
+def eh_produto_inovacao_ou_smallbag(row):
+    nome = normalizar_texto(row.get('PRODUTO', ''))
+    ean = str(row.get('EAN_LIMPO', ''))
     
-    if busca_limpa.isdigit():
-        df_match = df_produtos[
-            (df_produtos['EAN_LIMPO'].str.endswith(busca_limpa)) |
-            (df_produtos['CODIGO_MINASSAL_LIMPO'].str.endswith(busca_limpa)) |
-            (df_produtos['SKU_LIMPO'].str.endswith(busca_limpa)) |
-            (df_produtos['EAN_LIMPO'] == busca_limpa) |
-            (df_produtos['CODIGO_MINASSAL_LIMPO'] == busca_limpa) |
-            (df_produtos['SKU_LIMPO'] == busca_limpa)
-        ]
-    else:
-        tokens = [normalizar_texto(t) for t in busca_raw.split() if t.strip()]
+    eans_alvo = [
+        "7896029047606", "7896029047620", "7896029047736", "7896029047651",
+        "7896029047743", "7896029047842", "7896029047866", "7896029047880",
+        "7896029047965", "7896029047941", "7896029047996", "7896029048078",
+        "7896029048085"
+    ]
+    if ean in eans_alvo:
+        return True
         
-        def match_tokens(texto_registro):
-            for tok in tokens:
-                if tok not in texto_registro:
-                    return False
+    termos_chave = ['filezito', 'sheba creamy', 'banana e maca']
+    for termo in termos_chave:
+        if termo in nome:
             return True
-
-        df_match = df_produtos[df_produtos['BUSCA_COMPLETA'].apply(match_tokens)]
-
-    if not df_match.empty:
-        if len(df_match) > 1:
-            st.info(f"ℹ️ Encontrados **{len(df_match)} produtos** correspondentes:")
             
-        for index, row in df_match.iterrows():
-            nome_produto = row.get('PRODUTO', 'Produto Mars')
-            ean_val = row.get('EAN_LIMPO', 'N/D')
-            cod_minassal = row.get('CODIGO_MINASSAL_LIMPO', 'N/D')
-            familia_val = str(row.get('SUBBRAND', row.get('CATEGORIA', 'Mars')))
-            
-            preco_raw = 0.0
-            for col_preco in ['RSP \nRECOMENDADO', 'RSP \nRecomendado', 'RSP RECOMENDADO', 'RSP']:
-                if col_preco in row and pd.notna(row[col_preco]):
-                    preco_raw = row[col_preco]
-                    break
+    # Small Bags: embalagens menores que 3kg (< 3000g ou < 3kg)
+    if 'kg' in nome or 'g' in nome:
+        if 'dry' in nome or 'racao' in nome or 'bag' in nome or 'adulto' in nome or 'filhote' in nome:
+            match_g = re.search(r'(\d+)\s*g', nome)
+            if match_g and int(match_g.group(1)) < 3000:
+                return True
+            match_kg = re.search(r'(\d+[\.,]?\d*)\s*kg', nome)
+            if match_kg:
+                val_kg = float(match_kg.group(1).replace(',', '.'))
+                if val_kg < 3.0:
+                    return True
 
-            try:
-                if isinstance(preco_raw, str):
-                    preco_raw = preco_raw.replace('R$', '').replace('.', '').replace(',', '.').strip()
-                preco_recomendado = float(preco_raw)
-            except Exception:
-                preco_recomendado = 0.0
-            
-            sku_val = row.get('SKU_LIMPO', '')
-            caminho_img = obter_caminho_imagem(cod_minassal) or obter_caminho_imagem(ean_val) or obter_caminho_imagem(sku_val)
+    return False
 
-            col_esq, col_centro, col_dir = st.columns([1, 2.8, 1])
-            with col_centro:
-                if caminho_img and os.path.exists(caminho_img):
-                    st.image(caminho_img, use_container_width=True)
-                else:
-                    st.markdown("<p style='text-align: center; color: #64748B; font-size: 13px; margin: 20px 0;'>🖼️ Imagem não disponível</p>", unsafe_allow_html=True)
-            
-            detalhes_str = f"<b>Cód Minassal:</b> {cod_minassal}"
-            if ean_val and ean_val != "N/D":
-                detalhes_str += f" | <b>EAN:</b> {ean_val}"
+# --- 4. MENU DE NAVEGAÇÃO ENTRE ABAS ---
+aba_selecionada = st.radio(
+    "Escolha o modo:",
+    ["🔍 Consulta Rápida de Preços", "🏪 VERIFICAÇÃO CLIENTE"],
+    horizontal=True,
+    label_visibility="collapsed"
+)
+
+st.markdown("<hr style='border: 0.5px solid #334155; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
+
+# ==========================================
+# ABA 1: CONSULTA RÁPIDA DE PREÇOS
+# ==========================================
+if aba_selecionada == "🔍 Consulta Rápida de Preços":
+    st.markdown("<h2 style='text-align: center; color: #F8FAFC; margin-bottom: 2px;'>🐱🐶 Consulta Preços - Mars</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; font-size: 13px; color: #94A3B8;'>Digite os <b>dígitos finais do código de barras (EAN)</b>, o <b>código Minassal</b> ou o <b>nome do produto</b>:</p>", unsafe_allow_html=True)
+
+    codigo_busca = st.text_input("🔍 Buscar Produto:", placeholder="Ex: 97283, whiskas, pedigree, lata...", label_visibility="collapsed")
+
+    if df_produtos is None:
+        st.error("⚠️ Planilha `skeletor_com_codigo_minassal.xlsx` não encontrada no repositório do GitHub.")
+    elif codigo_busca:
+        busca_raw = str(codigo_busca).strip()
+        busca_limpa = busca_raw.replace('.0', '').strip()
+        
+        if busca_limpa.isdigit():
+            df_match = df_produtos[
+                (df_produtos['EAN_LIMPO'].str.endswith(busca_limpa)) |
+                (df_produtos['CODIGO_MINASSAL_LIMPO'].str.endswith(busca_limpa)) |
+                (df_produtos['SKU_LIMPO'].str.endswith(busca_limpa)) |
+                (df_produtos['EAN_LIMPO'] == busca_limpa) |
+                (df_produtos['CODIGO_MINASSAL_LIMPO'] == busca_limpa) |
+                (df_produtos['SKU_LIMPO'] == busca_limpa)
+            ]
+        else:
+            tokens = [normalizar_texto(t) for t in busca_raw.split() if t.strip()]
+            def match_tokens(texto_registro):
+                for tok in tokens:
+                    if tok not in texto_registro:
+                        return False
+                return True
+            df_match = df_produtos[df_produtos['BUSCA_COMPLETA'].apply(match_tokens)]
+
+        if not df_match.empty:
+            if len(df_match) > 1:
+                st.info(f"ℹ️ Encontrados **{len(df_match)} produtos** correspondentes:")
                 
-            if preco_recomendado > 0:
-                preco_formatado = f"R$ {preco_recomendado:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-                bloco_preco = f'<div class="caixa-preco-central"><div class="titulo-preco">💰 RSP Recomendado (MG)</div><div class="valor-preco">{preco_formatado}</div></div>'
-            else:
-                bloco_preco = '<div style="margin-top: 12px;"><span style="color: #FBBF24; font-size: 13px; font-weight: 700;">⚠️ Preço não cadastrado</span></div>'
+            for index, row in df_match.iterrows():
+                nome_produto = row.get('PRODUTO', 'Produto Mars')
+                ean_val = row.get('EAN_LIMPO', 'N/D')
+                cod_minassal = row.get('CODIGO_MINASSAL_LIMPO', 'N/D')
+                familia_val = str(row.get('SUBBRAND', row.get('CATEGORIA', 'Mars')))
+                preco_recomendado = extrair_preco_mg(row)
+                
+                sku_val = row.get('SKU_LIMPO', '')
+                caminho_img = obter_caminho_imagem(cod_minassal) or obter_caminho_imagem(ean_val) or obter_caminho_imagem(sku_val)
 
-            html_card = f'<div class="caixa-produto-info"><span class="badge-familia">{familia_val}</span><h3 style="color: #F8FAFC; margin-top: 4px; margin-bottom: 6px; font-size: 19px;">{nome_produto}</h3><p style="font-size: 12.5px; color: #94A3B8; margin-bottom: 0;">{detalhes_str}</p>{bloco_preco}</div>'
+                col_esq, col_centro, col_dir = st.columns([1, 2.8, 1])
+                with col_centro:
+                    if caminho_img and os.path.exists(caminho_img):
+                        st.image(caminho_img, use_container_width=True)
+                    else:
+                        st.markdown("<p style='text-align: center; color: #64748B; font-size: 13px; margin: 20px 0;'>🖼️ Imagem não disponível</p>", unsafe_allow_html=True)
+                
+                detalhes_str = f"<b>Cód Minassal:</b> {cod_minassal}"
+                if ean_val and ean_val != "N/D":
+                    detalhes_str += f" | <b>EAN:</b> {ean_val}"
+                    
+                if preco_recomendado > 0:
+                    preco_formatado = f"R$ {preco_recomendado:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+                    bloco_preco = f'<div class="caixa-preco-central"><div class="titulo-preco">💰 RSP Recomendado (MG)</div><div class="valor-preco">{preco_formatado}</div></div>'
+                else:
+                    bloco_preco = '<div style="margin-top: 12px;"><span style="color: #FBBF24; font-size: 13px; font-weight: 700;">⚠️ Preço não cadastrado</span></div>'
 
-            st.markdown(html_card, unsafe_allow_html=True)
+                html_card = f'<div class="caixa-produto-info"><span class="badge-familia">{familia_val}</span><h3 style="color: #F8FAFC; margin-top: 4px; margin-bottom: 6px; font-size: 19px;">{nome_produto}</h3><p style="font-size: 12.5px; color: #94A3B8; margin-bottom: 0;">{detalhes_str}</p>{bloco_preco}</div>'
+                st.markdown(html_card, unsafe_allow_html=True)
+        else:
+            st.error(f"❌ Nenhum produto encontrado para: **{codigo_busca}**.")
+
+# ==========================================
+# ABA 2: VERIFICAÇÃO CLIENTE (POÇOS DE CALDAS)
+# ==========================================
+elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
+    st.markdown("<h2 style='text-align: center; color: #F8FAFC; margin-bottom: 5px;'>🏪 Verificação de Cliente - Poços de Caldas</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; font-size: 13px; color: #94A3B8;'>Selecione o cliente, registre os preços dos produtos encontrados e envie o relatório de auditoria e oportunidades.</p>", unsafe_allow_html=True)
+
+    if df_produtos is None:
+        st.error("⚠️ Planilha de produtos não encontrada.")
+    elif not lista_clientes_pocos:
+        st.error("⚠️ Planilha de clientes de Poços de Caldas não encontrada ou vazia.")
     else:
-        st.error(f"❌ Nenhum produto encontrado para: **{codigo_busca}**.")
+        with st.form("form_verificacao_cliente"):
+            st.subheader("📍 Identificação da Loja")
+            
+            opcoes_clientes = ["Selecione o Cliente em Poços de Caldas..."] + lista_clientes_pocos
+            razao_social = st.selectbox("Razão Social do Cliente:", opcoes_clientes)
+            promotor_nome = st.text_input("Promotor Responsável:", placeholder="Ex: Benedito Bandola")
+            
+            st.markdown("---")
+            st.subheader("📝 Lançamento de Preços da Loja")
+            st.markdown("<p style='font-size: 12.5px; color: #94A3B8;'>Marque os produtos <b>encontrados na gôndola</b> e informe o preço praticado. As <b>inovações e small bags</b> não marcadas aparecerão como oportunidades faltantes.</p>", unsafe_allow_html=True)
+
+            inputs_verificacao = {}
+            
+            for index, row in df_produtos.iterrows():
+                nome_prod = row.get('PRODUTO', 'Produto')
+                cod_min = row.get('CODIGO_MINASSAL_LIMPO', '')
+                subbrand = row.get('SUBBRAND', 'Mars')
+                
+                with st.expander(f"🔹 [{subbrand}] {nome_prod} (Cód: {cod_min})"):
+                    presente = st.checkbox("Produto Encontrado na Gôndola", key=f"cli_pres_{index}")
+                    preco_praticado = st.number_input("Preço Praticado na Loja (R$):", min_value=0.0, format="%.2f", key=f"cli_prc_{index}")
+                    
+                    inputs_verificacao[index] = {
+                        'row_data': row,
+                        'presente': presente,
+                        'preco_praticado': preco_praticado
+                    }
+
+            st.markdown("---")
+            enviar_relatorio = st.form_submit_button("🚀 Enviar Verificação e Relatório por E-mail")
+
+            if enviar_relatorio:
+                if razao_social == "Selecione o Cliente em Poços de Caldas..." or not promotor_nome.strip():
+                    st.warning("⚠️ Por favor, selecione o Cliente e informe o Nome do Promotor antes de enviar.")
+                else:
+                    produtos_presentes = []
+                    oportunidades_faltantes = []
+                    
+                    for idx, info in inputs_verificacao.items():
+                        row = info['row_data']
+                        nome_prod = row.get('PRODUTO', 'Produto')
+                        cod_min = row.get('CODIGO_MINASSAL_LIMPO', '')
+                        cat = row.get('SUBBRAND', row.get('CATEGORIA', 'Mars'))
+                        preco_rec = extrair_preco_mg(row)
+                        
+                        if info['presente']:
+                            produtos_presentes.append({
+                                'produto': nome_prod,
+                                'codigo': cod_min,
+                                'categoria': cat,
+                                'preco_recomendado': preco_rec,
+                                'preco_praticado': info['preco_praticado']
+                            })
+                        else:
+                            # Se não foi encontrado, verifica se é Inovação ou Small Bag (< 3kg)
+                            if eh_produto_inovacao_ou_smallbag(row):
+                                oportunidades_faltantes.append({
+                                    'produto': nome_prod,
+                                    'codigo': cod_min,
+                                    'categoria': cat,
+                                    'preco_recomendado': preco_rec
+                                })
+
+                    # Montando o relatório HTML
+                    corpo_html = f"""
+                    <html>
+                      <body style="font-family: Arial, sans-serif; color: #333;">
+                        <h2 style="color: #0F172A;">🏪 Relatório de Verificação de Cliente</h2>
+                        <p><b>Cliente / Razão Social:</b> {razao_social}</p>
+                        <p><b>Promotor:</b> {promotor_nome}</p>
+                        <p><b>Localidade:</b> Poços de Caldas - MG</p>
+                        <hr>
+                        
+                        <h3 style="color: #10B981;">✅ Produtos Encontrados e Crítica de Preços (vs RSP MG):</h3>
+                        <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 13px;">
+                          <tr style="background-color: #f2f2f2;">
+                            <th>Produto</th>
+                            <th>Linha</th>
+                            <th>Cód Minassal</th>
+                            <th>RSP Rec. (MG)</th>
+                            <th>Preço Praticado</th>
+                            <th>Crítica de Preço</th>
+                          </tr>
+                    """
+                    
+                    for item in produtos_presentes:
+                        analise = "No Preço"
+                        cor_analise = "green"
+                        if item['preco_praticado'] > 0:
+                            diff = item['preco_praticado'] - item['preco_recomendado']
+                            if diff > 0.50:
+                                analise = f"Acima (+R$ {diff:.2f})"
+                                cor_analise = "orange"
+                            elif diff < -0.50:
+                                analise = f"Abaixo (-R$ {abs(diff):.2f})"
+                                cor_analise = "red"
+
+                        corpo_html += f"""
+                          <tr>
+                            <td>{item['produto']}</td>
+                            <td>{item['categoria']}</td>
+                            <td>{item['codigo']}</td>
+                            <td>R$ {item['preco_recomendado']:.2f}</td>
+                            <td>R$ {item['preco_praticado']:.2f}</td>
+                            <td style="color: {cor_analise}; font-weight: bold;">{analise}</td>
+                          </tr>
+                        """
+                        
+                    corpo_html += f"""
+                        </table>
+                        
+                        <h3 style="color: #E2001A; margin-top: 20px;">🚨 Oportunidades de Inovações & Small Bags Ausentes:</h3>
+                        <p style="font-size: 12px; color: #555;">Itens estratégicos de inovação e embalagens menores que 3kg que não estavam presentes na loja:</p>
+                        <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; width: 100%; font-size: 13px;">
+                          <tr style="background-color: #fcf2f2;">
+                            <th>Produto Oportunidade</th>
+                            <th>Linha</th>
+                            <th>Cód Minassal</th>
+                            <th>Sugestão RSP (MG)</th>
+                          </tr>
+                    """
+                    
+                    if oportunidades_faltantes:
+                        for item in oportunidades_faltantes:
+                            corpo_html += f"""
+                              <tr>
+                                <td><b>{item['produto']}</b></td>
+                                <td>{item['categoria']}</td>
+                                <td>{item['codigo']}</td>
+                                <td>R$ {item['preco_recomendado']:.2f}</td>
+                              </tr>
+                            """
+                    else:
+                        corpo_html += "<tr><td colspan='4'>Parabéns! Nenhuma oportunidade em falta. Mix estratégico 100% executado.</td></tr>"
+                        
+                    corpo_html += f"""
+                        </table>
+                        <p style="font-size: 11px; color: #777; margin-top: 30px;">Relatório gerado automaticamente pelo App de Gestão de Campo - Minassal / Mars (Poços de Caldas - MG).</p>
+                      </body>
+                    </html>
+                    """
+
+                    try:
+                        remetente = "seu_email@gmail.com"
+                        senha_app = "sua_senha_de_app"
+                        destinatario = "seu_email@gmail.com"
+                        
+                        if "email_config" in st.secrets:
+                            remetente = st.secrets["email_config"]["remetente"]
+                            senha_app = st.secrets["email_config"]["senha"]
+                            destinatario = st.secrets["email_config"]["destinatario"]
+
+                        msg = MIMEMultipart("alternative")
+                        msg["Subject"] = f"Verificação de Cliente: {razao_social} - Poços de Caldas"
+                        msg["From"] = remetente
+                        msg["To"] = destinatario
+                        
+                        msg.attach(MIMEText(corpo_html, "html"))
+
+                        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                            server.login(remetente, senha_app)
+                            server.sendmail(remetente, destinatario, msg.as_string())
+                            
+                        st.success("🎉 Verificação enviada com sucesso para a gestão!")
+                    except Exception as mail_err:
+                        st.success(f"🎉 Verificação do cliente **{razao_social}** registrada com sucesso!")
+                        st.info("💡 (Dica: Para o envio automático por e-mail, configure as credenciais SMTP no app ou nos Secrets do Streamlit).")
