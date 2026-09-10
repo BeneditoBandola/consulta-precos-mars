@@ -209,7 +209,6 @@ elif codigo_busca:
                 detalhes_str += f" | <b>EAN:</b> {ean_val}"
                 
             if preco_recomendado > 0:
-                preco_formatado = f"R$ {preco_formatado = f'R$ {preco_recomendado:,.2f}'.replace(',', 'X').replace('.', ',').replace('X', '.')}" # mantendo a formatação segura abaixo
                 preco_formatado = f"R$ {preco_recomendado:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
                 bloco_preco = f'<div class="caixa-preco-central"><div class="titulo-preco">💰 RSP Recomendado (MG)</div><div class="valor-preco">{preco_formatado}</div></div>'
             else:
