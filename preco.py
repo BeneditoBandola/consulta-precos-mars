@@ -296,10 +296,9 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
         if 'itens_verificacao' not in st.session_state:
             st.session_state.itens_verificacao = []
 
-        # Autocomplete Inteligente / Busca de Cliente
         termo_cliente = st.text_input("🔍 Digite o nome do cliente para buscar:", placeholder="Ex: Da Roça, Itamaraty, PetShop...")
         
-        cliente_selecionado = None
+        razao_social = None
         endereco_cliente = ""
         bairro_cliente = ""
 
@@ -309,17 +308,12 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                 nomes_encontrados = df_cli_match['NOME'].tolist()
                 razao_social = st.selectbox("Selecione o Cliente Encontrado:", nomes_encontrados)
                 
-                # Pega o endereço e bairro correspondente
                 row_cli = df_cli_match[df_cli_match['NOME'] == razao_social].iloc[0]
                 endereco_cliente = str(row_cli.get('ENDEREÇO', ''))
                 bairro_cliente = str(row_cli.get('BAIRRO', ''))
             else:
                 st.warning("Nenhum cliente encontrado com esse nome em Poços de Caldas.")
-                razao_social = None
-        else:
-            razao_social = None
 
-        # Exibe endereço e bairro se o cliente estiver selecionado
         if razao_social:
             st.markdown(f"""
             <div style="background-color: #1E293B; border-left: 4px solid #34D399; padding: 10px 15px; border-radius: 8px; margin-bottom: 15px;">
@@ -358,7 +352,6 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                     p_rec_str = f"R$ {p_rec:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') if p_rec > 0 else "Não cadastrado"
                     caminho_img = obter_caminho_imagem(p_cod) or obter_caminho_imagem(p_ean) or obter_caminho_imagem(p_sku)
 
-                    # Layout em colunas com textos aumentados (nome, código e recomendado no mesmo tamanho)
                     col_img, col_info, col_prc, col_btn = st.columns([0.8, 2.5, 1.5, 1])
                     
                     with col_img:
@@ -418,6 +411,14 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
             st.info("Nenhum produto adicionado ainda. Use a busca acima para incluir os itens encontrados na gôndola.")
 
         st.markdown("---")
+        st.subheader("📤 Opções de Envio do E-mail")
+        
+        tipo_envio = st.radio(
+            "Enviar relatório para:",
+            ["Enviar somente para o Benedito", "Enviar para a Gestão Completa (Todos)"],
+            horizontal=True
+        )
+
         if st.button("🚀 Enviar Verificação e Relatório por E-mail"):
             if not razao_social:
                 st.warning("⚠️ Por favor, busque e selecione o Cliente antes de enviar.")
@@ -516,30 +517,45 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                 </html>
                 """
 
+                # LEITURA ROBUSTA DOS SECRETS
+                remetente = "benedito.bandola@gmail.com"
+                senha_app = ""
+
                 try:
-                    remetente = "seu_email@gmail.com"
-                    senha_app = "sua_senha_de_app"
-                    destinatario = "seu_email@gmail.com"
-                    
                     if "email_config" in st.secrets:
-                        remetente = st.secrets["email_config"]["remetente"]
-                        senha_app = st.secrets["email_config"]["senha"]
-                        destinatario = st.secrets["email_config"]["destinatario"]
+                        remetente = st.secrets["email_config"].get("remetente", "benedito.bandola@gmail.com")
+                        senha_app = st.secrets["email_config"].get("senha", "")
+                except Exception:
+                    pass
 
-                    msg = MIMEMultipart("alternative")
-                    msg["Subject"] = f"Verificação de Cliente: {razao_social} - Poços de Caldas"
-                    msg["From"] = remetente
-                    msg["To"] = destinatario
-                    
-                    msg.attach(MIMEText(corpo_html, "html"))
+                if not senha_app:
+                    st.error("⚠️ Erro: A senha de aplicativo do e-mail não foi encontrada nos Secrets do Streamlit. Configure a chave `senha` no painel do Streamlit Cloud.")
+                else:
+                    try:
+                        if tipo_envio == "Enviar somente para o Benedito":
+                            lista_destinatarios = ["benedito.bandola@minassal.com.br"]
+                        else:
+                            lista_destinatarios = [
+                                "benedito.bandola@minassal.com.br",
+                                "poli@minassal.com.br",
+                                "caio.poli@minassal.com.br",
+                                "daniel.santini@minassal.com.br",
+                                "rubens.porfirio@minassal.com.br"
+                            ]
 
-                    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                        server.login(remetente, senha_app)
-                        server.sendmail(remetente, destinatario, msg.as_string())
+                        msg = MIMEMultipart("alternative")
+                        msg["Subject"] = f"Verificação de Cliente: {razao_social} - Poços de Caldas"
+                        msg["From"] = remetente
+                        msg["To"] = ", ".join(lista_destinatarios)
                         
-                    st.success("🎉 Verificação enviada com sucesso para a gestão!")
-                    st.session_state.itens_verificacao = []
-                except Exception as mail_err:
-                    st.success(f"🎉 Verificação do cliente **{razao_social}** registrada com sucesso pela promotora Pamela!")
-                    st.info("💡 (Dica: Para o envio automático por e-mail, configure as credenciais SMTP no app ou nos Secrets do Streamlit).")
-                    st.session_state.itens_verificacao = []
+                        msg.attach(MIMEText(corpo_html, "html"))
+
+                        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                            server.login(remetente, senha_app)
+                            server.sendmail(remetente, lista_destinatarios, msg.as_string())
+                            
+                        st.success(f"🎉 Verificação enviada com sucesso por e-mail para: {', '.join(lista_destinatarios)}!")
+                        st.session_state.itens_verificacao = []
+                    except Exception as mail_err:
+                        st.error(f"❌ Erro ao enviar o e-mail via SMTP: {mail_err}")
+                        st.info("💡 Dica: Verifique se a senha de 16 dígitos nos Secrets está correta e se a Confirmação em Duas Etapas está ativa no Gmail.")
