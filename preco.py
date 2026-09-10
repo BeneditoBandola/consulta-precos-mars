@@ -10,7 +10,7 @@ st.set_page_config(
     page_icon="🐱🐶"
 )
 
-# --- 2. ESTILO VISUAL E CORES (TEMA ELEGANTE) ---
+# --- 2. ESTILO VISUAL E CORES (TEMA ELEGANTE COM VERDE) ---
 st.markdown("""
 <style>
 .stApp { 
@@ -20,7 +20,7 @@ st.markdown("""
 .caixa-produto-info {
     background-color: #1E293B;
     border: 1px solid #334155;
-    border-top: 5px solid #E2001A;
+    border-top: 5px solid #10B981;
     border-radius: 16px;
     padding: 24px 20px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
@@ -209,8 +209,9 @@ elif codigo_busca:
                 detalhes_str += f" | <b>EAN:</b> {ean_val}"
                 
             if preco_recomendado > 0:
+                preco_formatado = f"R$ {preco_formatado = f'R$ {preco_recomendado:,.2f}'.replace(',', 'X').replace('.', ',').replace('X', '.')}" # mantendo a formatação segura abaixo
                 preco_formatado = f"R$ {preco_recomendado:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-                bloco_preco = f'<div class="caixa-preco-central"><div class="titulo-preco">💰 RSP Recomendado</div><div class="valor-preco">{preco_formatado}</div></div>'
+                bloco_preco = f'<div class="caixa-preco-central"><div class="titulo-preco">💰 RSP Recomendado (MG)</div><div class="valor-preco">{preco_formatado}</div></div>'
             else:
                 bloco_preco = '<div style="margin-top: 12px;"><span style="color: #FBBF24; font-size: 13px; font-weight: 700;">⚠️ Preço não cadastrado</span></div>'
 
