@@ -530,7 +530,7 @@ if aba_selecionada == "🔍 Consulta Rápida de Preços":
 # ==========================================
 elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
     st.markdown("<h2 style='text-align: center; color: #F8FAFC; margin-bottom: 5px;'>🏪 Verificação de Cliente - Poços de Caldas</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; font-size: 13px; color: #94A3B8;'>Busque o cliente pelo nome, adicione os produtos encontrados e registre os preços praticados.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; font-size: 13px; color: #94A3B8;'>Busque e selecione o cliente, adicione os produtos encontrados e registre os preços praticados.</p>", unsafe_allow_html=True)
 
     if df_produtos is None:
         st.error("⚠️ Planilha de produtos não encontrada.")
@@ -540,8 +540,16 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
         if 'itens_verificacao' not in st.session_state:
             st.session_state.itens_verificacao = []
 
-        termo_cliente = st.text_input("🔍 Digite o nome do cliente para buscar:", placeholder="Ex: Da Roça, Itamaraty, PetShop...")
+        # Autocomplete Inteligente para Clientes: filtra em tempo real conforme digita
+        lista_clientes = df_clientes_pocos['NOME'].tolist()
         
+        filtro_cliente = st.text_input("🔍 Digite para buscar o cliente (ex: pet, agro, da roça...):", placeholder="Digite parte do nome da loja...")
+        
+        if filtro_cliente:
+            clientes_filtrados = [c for c in lista_clientes if normalizar_texto(filtro_cliente) in normalizar_texto(c)]
+        else:
+            clientes_filtrados = lista_clientes
+
         razao_social = None
         endereco_cliente = ""
         bairro_cliente = ""
@@ -549,26 +557,23 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
         lon_cliente = None
         cod_cliente = ""
 
-        if termo_cliente:
-            df_cli_match = df_clientes_pocos[df_clientes_pocos['NOME'].str.contains(termo_cliente, case=False, na=False)]
-            if not df_cli_match.empty:
-                nomes_encontrados = df_cli_match['NOME'].tolist()
-                razao_social = st.selectbox("Selecione o Cliente Encontrado:", nomes_encontrados)
-                
-                row_cli = df_cli_match[df_cli_match['NOME'] == razao_social].iloc[0]
-                endereco_cliente = str(row_cli.get('ENDEREÇO', ''))
-                bairro_cliente = str(row_cli.get('BAIRRO', ''))
-                lat_cliente = row_cli.get('LATITUDE', None)
-                lon_cliente = row_cli.get('LONGITUDE', None)
-                cod_cliente = str(row_cli.get('CÓDIGO', ''))
-            else:
-                st.warning("Nenhum cliente encontrado com esse nome em Poços de Caldas.")
+        if clientes_filtrados:
+            razao_social = st.selectbox("Selecione na lista filtrada:", clientes_filtrados)
+            
+            row_cli = df_clientes_pocos[df_clientes_pocos['NOME'] == razao_social].iloc[0]
+            endereco_cliente = str(row_cli.get('ENDEREÇO', ''))
+            bairro_cliente = str(row_cli.get('BAIRRO', ''))
+            lat_cliente = row_cli.get('LATITUDE', None)
+            lon_cliente = row_cli.get('LONGITUDE', None)
+            cod_cliente = str(row_cli.get('CÓDIGO', ''))
+        else:
+            st.warning("Nenhum cliente encontrado com esse termo em Poços de Caldas.")
 
         if razao_social:
             gps_txt = f"Lat: {lat_cliente}, Lon: {lon_cliente}" if pd.notna(lat_cliente) else "Não disponíveis"
             st.markdown(f"""
             <div style="background-color: #1E293B; border-left: 4px solid #34D399; padding: 10px 15px; border-radius: 8px; margin-bottom: 15px;">
-                <span style="font-size: 12px; color: #94A3B8; text-transform: uppercase; font-weight: 700;">Dados da Loja:</span><br>
+                <span style="font-size: 12px; color: #94A3B8; text-transform: uppercase; font-weight: 700;">Dados da Loja Selecionada:</span><br>
                 <span style="font-size: 14px; color: #F8FAFC; font-weight: 600;">📍 {endereco_cliente} - Bairro: {bairro_cliente} | 🛰️ GPS: {gps_txt}</span>
             </div>
             """, unsafe_allow_html=True)
@@ -582,7 +587,7 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
         st.markdown("---")
         st.subheader("🔍 Adicionar Produtos Encontrados na Loja")
         
-        termo_adicao = st.text_input("Digite o nome ou código do produto para adicionar:", placeholder="Ex: Whiskas, Pedigree, 97283...")
+        termo_adicao = st.text_input("Digite o nome ou código do produto:", placeholder="Ex: Whiskas, Pedigree, 97283...")
 
         if termo_adicao:
             t_clean = termo_adicao.replace('.0', '').strip()
