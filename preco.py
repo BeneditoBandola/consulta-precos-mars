@@ -147,6 +147,12 @@ def carregar_clientes_pocos():
             pocos['NOME'] = pocos['NOME'].astype(str).str.strip()
             pocos['ENDEREÇO'] = pocos['ENDEREÇO'].fillna('').astype(str).str.strip()
             pocos['BAIRRO'] = pocos['BAIRRO'].fillna('').astype(str).str.strip()
+            
+            # Trata coordenadas com vírgula para ponto
+            for col_coord in ['LATITUDE', 'LONGITUDE']:
+                if col_coord in pocos.columns:
+                    pocos[col_coord] = pocos[col_coord].astype(str).str.replace(',', '.').astype(float, errors='ignore')
+            
             if 'CÓDIGO' in pocos.columns:
                 pocos['CÓDIGO_LIMPO'] = pocos['CÓDIGO'].apply(limpar_campo_codigo)
             return pocos
@@ -287,7 +293,7 @@ def obter_ultima_compra_periodos(razao_social, codigo_produto):
     
     return "Não comprado este ano", False
 
-# Função para gerar o PDF em memória com coordenadas GPS / link Google Maps
+# Função para gerar o PDF em memória com link funcional do Google Maps
 def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, lat_cli, lon_cli, cod_cli, produtos_presentes, oportunidades_faltantes):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
@@ -330,15 +336,21 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, lat_cli,
     story.append(Paragraph("Minassal / Mars — Poços de Caldas (MG)", sub_style))
     story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#CBD5E1'), spaceAfter=15))
     
-    # Bloco de Informações da Loja com Coordenadas e Link de GPS
-    gps_str = f"Lat: {lat_cli}, Lon: {lon_cli}" if pd.notna(lat_cli) and pd.notna(lon_cli) else "Não disponíveis"
-    map_link = f"https://www.google.com/maps/search/?api=1&query={lat_cli},{lon_cli}" if pd.notna(lat_cli) and pd.notna(lon_cli) else "#"
+    # Link formatado corretamente para o Google Maps com ponto decimal
+    if pd.notna(lat_cli) and pd.notna(lon_cli):
+        lat_f = f"{float(lat_cli):.6f}"
+        lon_f = f"{float(lon_cli):.6f}"
+        gps_str = f"Lat: {lat_f}, Lon: {lon_f}"
+        map_link = f"https://www.google.com/maps/search/?api=1&query={lat_f},{lon_f}"
+        gps_html = f'<a href="{map_link}" color="#2563EB"><u>{gps_str} (Abrir no Google Maps)</u></a>'
+    else:
+        gps_html = "Não disponíveis"
     
     info_loja = f"""
     <b>Cód Cliente:</b> {cod_cli}<br/>
     <b>Cliente / Razão Social:</b> {razao_social}<br/>
     <b>Endereço:</b> {endereco_cliente} — Bairro: {bairro_cliente}<br/>
-    <b>Coordenadas GPS:</b> <a href="{map_link}" color="#2563EB"><u>{gps_str} (Abrir no Maps)</u></a><br/>
+    <b>Coordenadas GPS:</b> {gps_html}<br/>
     <b>Promotora Responsável:</b> Pamela | <b>Localidade:</b> Poços de Caldas - MG
     """
     story.append(Paragraph(info_loja, texto_style))
@@ -563,6 +575,11 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                 <span style="font-size: 14px; color: #F8FAFC; font-weight: 600;">📍 {endereco_cliente} - Bairro: {bairro_cliente} | 🛰️ GPS: {gps_txt}</span>
             </div>
             """, unsafe_allow_html=True)
+            
+            # Exibe o mapa interativo no Streamlit se houver coordenadas válidas
+            if pd.notna(lat_cliente) and pd.notna(lon_cliente):
+                df_mapa = pd.DataFrame({'lat': [float(lat_cliente)], 'lon': [float(lon_cliente)]})
+                st.map(df_mapa, zoom=15, height=200)
 
         promotor_nome = st.text_input("Promotor Responsável:", value="Pamela", disabled=True)
 
@@ -704,7 +721,7 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                     <p><b>Coordenadas GPS:</b> Lat: {lat_cliente}, Lon: {lon_cliente}</p>
                     <p><b>Promotor:</b> Pamela | <b>Localidade:</b> Poços de Caldas - MG</p>
                     <hr>
-                    <p>Segue em anexo o relatório executivo em formato <b>PDF</b> contendo a verificação de preços, oportunidades, histórico de períodos e localização de GPS para esta loja.</p>
+                    <p>Segue em anexo o relatório executivo em formato <b>PDF</b> contendo a verificação de preços, oportunidades e o histórico de períodos para esta loja.</p>
                     <p style="font-size: 11px; color: #777; margin-top: 30px;">Relatório gerado automaticamente pelo App de Gestão de Campo - Minassal / Mars (Poços de Caldas - MG).</p>
                   </body>
                 </html>
