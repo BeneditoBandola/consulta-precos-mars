@@ -9,6 +9,7 @@ from email.mime.base import MIMEBase
 from email import encoders
 import re
 from io import BytesIO
+from datetime import datetime
 
 # Importações do ReportLab para geração de PDF
 from reportlab.lib.pagesizes import letter
@@ -152,8 +153,29 @@ def carregar_clientes_pocos():
         pass
     return pd.DataFrame()
 
+@st.cache_data
+def carregar_vendas():
+    arquivo_vendas = "todas as vendas ano mars.xlsx"
+    if not os.path.exists(arquivo_vendas):
+        return pd.DataFrame()
+    try:
+        xls = pd.ExcelFile(arquivo_vendas)
+        df_v = pd.read_excel(arquivo_vendas, sheet_name=xls.sheet_names[0])
+        df_v.columns = [str(c).strip().upper() for c in df_v.columns]
+        if 'CLIENTE NOME' in df_v.columns:
+            df_v['CLIENTE_NOME_LIMPO'] = df_v['CLIENTE NOME'].astype(str).str.strip()
+        if 'PRODUTO CODIGO' in df_v.columns:
+            df_v['PROD_COD_LIMPO'] = df_v['PRODUTO CODIGO'].apply(limpar_campo_codigo)
+        if 'DATA' in df_v.columns:
+            df_v['DATA_COMPRA'] = pd.to_datetime(df_v['DATA'], errors='coerce')
+        return df_v
+    except Exception:
+        pass
+    return pd.DataFrame()
+
 df_produtos = carregar_dados()
 df_clientes_pocos = carregar_clientes_pocos()
+df_vendas = carregar_vendas()
 
 PASTA_FOTOS = "mockups_produtos"
 
@@ -226,7 +248,33 @@ def eh_produto_inovacao_ou_smallbag(row):
 
     return False
 
-# Função para gerar o PDF em memória com rigor total na diferença de preço (sem tolerância)
+# Função para obter a data da última compra de um produto específico para um cliente
+def obter_ultima_compra_cliente(razao_social, codigo_produto):
+    if df_vendas.empty:
+        return "Sem histórico", False
+    
+    match_vendas = df_vendas[
+        (df_vendas['CLIENTE_NOME_LIMPO'].str.upper() == str(razao_social).upper()) &
+        (df_vendas['PROD_COD_LIMPO'] == str(codigo_produto))
+    ]
+    
+    if match_vendas.empty or match_vendas['DATA_COMPRA'].isna().all():
+        return "Não comprado este ano", False
+    
+    max_data = match_vendas['DATA_COMPRA'].max()
+    if pd.isna(max_data):
+        return "Não comprado este ano", False
+        
+    ano_compra = max_data.year
+    data_str = max_data.strftime('%d/%m/%Y')
+    
+    # Critério: Não comprado este ano (2026)
+    if ano_compra < 2026:
+        return f"{data_str} (20{str(ano_compra)[-2:]})", False
+    
+    return data_str, True
+
+# Função para gerar o PDF em memória com histórico de compras e cores condicionais
 def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos_presentes, oportunidades_faltantes):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
@@ -284,11 +332,10 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos
     
     for item in produtos_presentes:
         analise_txt = "No Preço"
-        cor_estilo = colors.HexColor('#10B981') # Verde
+        cor_estilo = colors.HexColor('#10B981')
         
         if item['preco_praticado'] > 0:
             diff = item['preco_praticado'] - item['preco_recomendado']
-            # Sem tolerância: qualquer valor > 0 acima do recomendado já é considerado acima
             if diff > 0.00:
                 analise_txt = f"Acima (+R$ {diff:.2f})"
                 cor_estilo = colors.HexColor('#DC2626') # Vermelho
@@ -297,12 +344,12 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos
                 cor_estilo = colors.HexColor('#10B981') # Verde
             else:
                 analise_txt = "No Preço (Ideal)"
-                cor_estilo = colors.HexColor('#10B981') # Verde
+                cor_estilo = colors.HexColor('#10B981')
         
         p_analise = Paragraph(f"<b><font color='{cor_estilo.hexval()}'>{analise_txt}</font></b>", styles['Normal'])
         
         tabela_dados.append([
-            item['produto'][:32],
+            item['produto'][:30],
             str(item['categoria']),
             str(item['codigo']),
             f"R$ {item['preco_recomendado']:.2f}",
@@ -310,7 +357,7 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos
             p_analise
         ])
         
-    t1 = Table(tabela_dados, colWidths=[160, 80, 50, 70, 70, 120])
+    t1 = Table(tabela_dados, colWidths=[150, 85, 50, 70, 70, 115])
     t1.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F1F5F9')),
         ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor('#0F172A')),
@@ -325,23 +372,38 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos
     story.append(t1)
     story.append(Spacer(1, 15))
     
-    story.append(Paragraph("<b>🚨 Oportunidades de Inovações & Small Bags Ausentes (Agrupadas)</b>", secao_style))
+    story.append(Paragraph("<b>🚨 Oportunidades & Histórico de Compras (Itens Faltantes)</b>", secao_style))
     
-    tabela_faltantes = [["Produto Oportunidade", "Linha", "Cód", "Sugestão RSP (MG)"]]
+    tabela_faltantes = [["Produto Oportunidade", "Linha", "Cód", "Última Compra"]]
     
     if oportunidades_faltantes:
         oportunidades_ordenadas = sorted(oportunidades_faltantes, key=lambda x: x['produto'])
         for item in oportunidades_ordenadas:
+            prod_cod = item['codigo']
+            nome_p = item['produto']
+            linha_p = str(item['categoria'])
+            
+            # Obtém a data da última compra do histórico de vendas
+            ultima_data, comprado_este_ano = obter_ultima_compra_cliente(razao_social, prod_cod)
+            
+            # Se não comprou este ano ou nunca comprou: Negrito e Vermelho
+            if not comprado_este_ano:
+                p_nome = Paragraph(f"<b><font color='#DC2626'>{nome_p[:35]}</font></b>", styles['Normal'])
+                p_data = Paragraph(f"<b><font color='#DC2626'>{ultima_data}</font></b>", styles['Normal'])
+            else:
+                p_nome = Paragraph(nome_p[:35], styles['Normal'])
+                p_data = Paragraph(ultima_data, styles['Normal'])
+            
             tabela_faltantes.append([
-                item['produto'][:40],
-                str(item['categoria']),
-                str(item['codigo']),
-                f"R$ {item['preco_recomendado']:.2f}"
+                p_nome,
+                linha_p,
+                str(prod_cod),
+                p_data
             ])
     else:
         tabela_faltantes.append(["Nenhuma oportunidade em falta! Mix estratégico 100% executado.", "", "", ""])
         
-    t2 = Table(tabela_faltantes, colWidths=[240, 100, 70, 140])
+    t2 = Table(tabela_faltantes, colWidths=[220, 100, 60, 160])
     t2.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#FEF2F2')),
         ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor('#991B1B')),
@@ -618,7 +680,7 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                     <p><b>Promotor:</b> Pamela</p>
                     <p><b>Localidade:</b> Poços de Caldas - MG</p>
                     <hr>
-                    <p>Segue em anexo o relatório executivo em formato <b>PDF</b> contendo a verificação de preços e as oportunidades estratégicas (Inovações e Small Bags) para esta loja.</p>
+                    <p>Segue em anexo o relatório executivo em formato <b>PDF</b> contendo a verificação de preços, oportunidades e o histórico da última compra de cada item faltante para esta loja.</p>
                     <p style="font-size: 11px; color: #777; margin-top: 30px;">Relatório gerado automaticamente pelo App de Gestão de Campo - Minassal / Mars (Poços de Caldas - MG).</p>
                   </body>
                 </html>
