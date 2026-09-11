@@ -314,7 +314,6 @@ def obter_historico_compras_cliente(razao_social):
         prod_cod = row.get('PROD_COD_LIMPO', '')
         prod_nome = row.get('PRODUTO', row.get('PRODUTO NOME', 'Produto'))
         
-        # Encontrar períodos com quantidade > 0
         periodos_comprados = []
         for col in colunas_periodos:
             val = row.get(col, 0)
@@ -437,106 +436,19 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, lat_cli,
     story.append(Paragraph(info_loja, texto_style))
     story.append(Spacer(1, 15))
     
-    if loja_nao_visitada:
-        story.append(Paragraph("<b>⚠️ STATUS DO ATENDIMENTO</b>", secao_style))
-        story.append(Paragraph("<b>Loja não visitada nesta rota / período.</b> Nenhum produto verificado na gôndola.", texto_style))
-        story.append(Spacer(1, 15))
-        
-        # Se for Águas da Prata e a loja não foi visitada, mostrar explicitamente o que foi comprado com datas/períodos e o que não foi comprado de inovações
-        if "Águas da Prata" in nome_cidade_sub:
-            story.append(Paragraph("<b>📦 Histórico de Compras Realizadas (com Períodos)</b>", secao_style))
-            compras_cli = obter_historico_compras_cliente(razao_social)
-            tabela_compras = [["Produto Comprado", "Cód", "Períodos de Compra (2026)"]]
-            if compras_cli:
-                for c in compras_cli:
-                    tabela_compras.append([c['produto'][:32], c['codigo'], c['periodos']])
-            else:
-                tabela_compras.append(["Nenhuma compra registrada neste ano.", "", ""])
-                
-            t_comp = Table(tabela_compras, colWidths=[240, 60, 204])
-            t_comp.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F1F5F9')),
-                ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor('#0F172A')),
-                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0,0), (-1,-1), 8.5),
-                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                ('ALIGN', (0,1), (0,-1), 'LEFT'),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 5),
-                ('TOPPADDING', (0,0), (-1,-1), 5),
-                ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
-            ]))
-            story.append(t_comp)
-            story.append(Spacer(1, 15))
+    # Se for Águas da Prata, o PDF inclui o histórico de compras e as inovações não compradas diretamente
+    if "Águas da Prata" in nome_cidade_sub:
+        story.append(Paragraph("<b>📦 Histórico de Compras Realizadas (com Períodos)</b>", secao_style))
+        compras_cli = obter_historico_compras_cliente(razao_social)
+        tabela_compras = [["Produto Comprado", "Cód", "Períodos de Compra (2026)"]]
+        if compras_cli:
+            for c in compras_cli:
+                tabela_compras.append([c['produto'][:32], c['codigo'], c['periodos']])
+        else:
+            tabela_compras.append(["Nenhuma compra registrada neste ano.", "", ""])
             
-            story.append(Paragraph("<b>🚨 Inovações Não Compradas (Oportunidades)</b>", secao_style))
-            tabela_inov = [["Produto Inovação / Oportunidade", "Cód", "Família"]]
-            
-            # Descobrir quais códigos foram comprados por este cliente específico
-            cods_comp_cliente = [c['codigo'] for c in compras_cli]
-            inovações_pendentes_cli = []
-            for idx, row in df_produtos.iterrows():
-                if eh_produto_inovacao_ou_smallbag(row):
-                    c_min = row.get('CODIGO_MINASSAL_LIMPO', '')
-                    if c_min not in cods_comp_cliente:
-                        inovações_pendentes_cli.append({
-                            'produto': row.get('PRODUTO', ''),
-                            'codigo': c_min,
-                            'familia': row.get('SUBBRAND', 'Mars')
-                        })
-            
-            if inovações_pendentes_cli:
-                for inv in inovações_pendentes_cli[:20]: # Limitar para caber na página se necessário
-                    tabela_inov.append([inv['produto'][:35], inv['codigo'], inv['familia']])
-            else:
-                tabela_inov.append(["Todas as inovações já foram compradas!", "", ""])
-                
-            t_inv = Table(tabela_inov, colWidths=[270, 70, 164])
-            t_inv.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#FEF2F2')),
-                ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor('#991B1B')),
-                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0,0), (-1,-1), 8.5),
-                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                ('ALIGN', (0,1), (0,-1), 'LEFT'),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 5),
-                ('TOPPADDING', (0,0), (-1,-1), 5),
-                ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#FCA5A5')),
-            ]))
-            story.append(t_inv)
-    else:
-        story.append(Paragraph("<b>✅ Produtos Encontrados e Crítica de Preços (vs RSP MG)</b>", secao_style))
-        
-        tabela_dados = [["Produto", "Linha", "Cód", "Rec. MG", "Lido", "Análise"]]
-        
-        for item in produtos_presentes:
-            analise_txt = "No Preço"
-            cor_estilo = colors.HexColor('#10B981')
-            
-            if item['preco_praticado'] > 0:
-                diff = item['preco_praticado'] - item['preco_recomendado']
-                if diff > 0.00:
-                    analise_txt = f"Acima (+R$ {diff:.2f})"
-                    cor_estilo = colors.HexColor('#DC2626')
-                elif diff < 0.00:
-                    analise_txt = f"Abaixo (-R$ {abs(diff):.2f})"
-                    cor_estilo = colors.HexColor('#10B981')
-                else:
-                    analise_txt = "No Preço (Ideal)"
-                    cor_estilo = colors.HexColor('#10B981')
-            
-            p_analise = Paragraph(f"<b><font color='{cor_estilo.hexval()}'>{analise_txt}</font></b>", styles['Normal'])
-            
-            tabela_dados.append([
-                item['produto'][:30],
-                str(item['categoria']),
-                str(item['codigo']),
-                f"R$ {item['preco_recomendado']:.2f}",
-                f"R$ {item['preco_praticado']:.2f}",
-                p_analise
-            ])
-            
-        t1 = Table(tabela_dados, colWidths=[150, 85, 50, 70, 70, 115])
-        t1.setStyle(TableStyle([
+        t_comp = Table(tabela_compras, colWidths=[240, 60, 204])
+        t_comp.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F1F5F9')),
             ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor('#0F172A')),
             ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
@@ -545,40 +457,34 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, lat_cli,
             ('ALIGN', (0,1), (0,-1), 'LEFT'),
             ('BOTTOMPADDING', (0,0), (-1,-1), 5),
             ('TOPPADDING', (0,0), (-1,-1), 5),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E2E8F0')),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
         ]))
-        story.append(t1)
+        story.append(t_comp)
         story.append(Spacer(1, 15))
         
-        story.append(Paragraph("<b>🚨 Oportunidades & Histórico de Compras (Itens Faltantes)</b>", secao_style))
+        story.append(Paragraph("<b>🚨 Inovações Não Compradas (Oportunidades)</b>", secao_style))
+        tabela_inov = [["Produto Inovação / Oportunidade", "Cód", "Família"]]
         
-        tabela_faltantes = [["Produto Oportunidade", "Cód", "Histórico de Vendas"]]
+        cods_comp_cliente = [c['codigo'] for c in compras_cli]
+        inovações_pendentes_cli = []
+        for idx, row in df_produtos.iterrows():
+            if eh_produto_inovacao_ou_smallbag(row):
+                c_min = row.get('CODIGO_MINASSAL_LIMPO', '')
+                if c_min not in cods_comp_cliente:
+                    inovações_pendentes_cli.append({
+                        'produto': row.get('PRODUTO', ''),
+                        'codigo': c_min,
+                        'familia': row.get('SUBBRAND', 'Mars')
+                    })
         
-        if oportunidades_faltantes:
-            oportunidades_ordenadas = sorted(oportunidades_faltantes, key=lambda x: x['produto'])
-            for item in oportunidades_ordenadas:
-                prod_cod = item['codigo']
-                nome_p = item['produto']
-                
-                status_periodo, comprado_este_ano = obter_ultima_compra_periodos(razao_social, prod_cod)
-                
-                if not comprado_este_ano:
-                    p_nome = Paragraph(f"<b><font color='#DC2626'>{nome_p}</font></b>", styles['Normal'])
-                    p_status = Paragraph(f"<b><font color='#DC2626'>{status_periodo}</font></b>", styles['Normal'])
-                else:
-                    p_nome = Paragraph(nome_p, styles['Normal'])
-                    p_status = Paragraph(status_periodo, styles['Normal'])
-                
-                tabela_faltantes.append([
-                    p_nome,
-                    str(prod_cod),
-                    p_status
-                ])
+        if inovações_pendentes_cli:
+            for inv in inovações_pendentes_cli:
+                tabela_inov.append([inv['produto'][:35], inv['codigo'], inv['familia']])
         else:
-            tabela_faltantes.append(["Nenhuma oportunidade em falta! Mix estratégico executado.", "", ""])
+            tabela_inov.append(["Todas as inovações já foram compradas!", "", ""])
             
-        t2 = Table(tabela_faltantes, colWidths=[290, 60, 205])
-        t2.setStyle(TableStyle([
+        t_inv = Table(tabela_inov, colWidths=[270, 70, 164])
+        t_inv.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#FEF2F2')),
             ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor('#991B1B')),
             ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
@@ -589,7 +495,100 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, lat_cli,
             ('TOPPADDING', (0,0), (-1,-1), 5),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#FCA5A5')),
         ]))
-        story.append(t2)
+        story.append(t_inv)
+    else:
+        # Fluxo original mantido intacto para Poços de Caldas
+        if loja_nao_visitada:
+            story.append(Paragraph("<b>⚠️ STATUS DO ATENDIMENTO</b>", secao_style))
+            story.append(Paragraph("<b>Loja não visitada nesta rota / período.</b> Nenhum produto verificado na gôndola.", texto_style))
+            story.append(Spacer(1, 15))
+        else:
+            story.append(Paragraph("<b>✅ Produtos Encontrados e Crítica de Preços (vs RSP MG)</b>", secao_style))
+            
+            tabela_dados = [["Produto", "Linha", "Cód", "Rec. MG", "Lido", "Análise"]]
+            
+            for item in produtos_presentes:
+                analise_txt = "No Preço"
+                cor_estilo = colors.HexColor('#10B981')
+                
+                if item['preco_praticado'] > 0:
+                    diff = item['preco_praticado'] - item['preco_recomendado']
+                    if diff > 0.00:
+                        analise_txt = f"Acima (+R$ {diff:.2f})"
+                        cor_estilo = colors.HexColor('#DC2626')
+                    elif diff < 0.00:
+                        analise_txt = f"Abaixo (-R$ {abs(diff):.2f})"
+                        cor_estilo = colors.HexColor('#10B981')
+                    else:
+                        analise_txt = "No Preço (Ideal)"
+                        cor_estilo = colors.HexColor('#10B981')
+                
+                p_analise = Paragraph(f"<b><font color='{cor_estilo.hexval()}'>{analise_txt}</font></b>", styles['Normal'])
+                
+                tabela_dados.append([
+                    item['produto'][:30],
+                    str(item['categoria']),
+                    str(item['codigo']),
+                    f"R$ {item['preco_recomendado']:.2f}",
+                    f"R$ {item['preco_praticado']:.2f}",
+                    p_analise
+                ])
+                
+            t1 = Table(tabela_dados, colWidths=[150, 85, 50, 70, 70, 115])
+            t1.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F1F5F9')),
+                ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor('#0F172A')),
+                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0,0), (-1,-1), 8.5),
+                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                ('ALIGN', (0,1), (0,-1), 'LEFT'),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+                ('TOPPADDING', (0,0), (-1,-1), 5),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E2E8F0')),
+            ]))
+            story.append(t1)
+            story.append(Spacer(1, 15))
+            
+            story.append(Paragraph("<b>🚨 Oportunidades & Histórico de Compras (Itens Faltantes)</b>", secao_style))
+            
+            tabela_faltantes = [["Produto Oportunidade", "Cód", "Histórico de Vendas"]]
+            
+            if oportunidades_faltantes:
+                oportunidades_ordenadas = sorted(oportunidades_faltantes, key=lambda x: x['produto'])
+                for item in oportunidades_ordenadas:
+                    prod_cod = item['codigo']
+                    nome_p = item['produto']
+                    
+                    status_periodo, comprado_este_ano = obter_ultima_compra_periodos(razao_social, prod_cod)
+                    
+                    if not comprado_este_ano:
+                        p_nome = Paragraph(f"<b><font color='#DC2626'>{nome_p}</font></b>", styles['Normal'])
+                        p_status = Paragraph(f"<b><font color='#DC2626'>{status_periodo}</font></b>", styles['Normal'])
+                    else:
+                        p_nome = Paragraph(nome_p, styles['Normal'])
+                        p_status = Paragraph(status_periodo, styles['Normal'])
+                    
+                    tabela_faltantes.append([
+                        p_nome,
+                        str(prod_cod),
+                        p_status
+                    ])
+            else:
+                tabela_faltantes.append(["Nenhuma oportunidade em falta! Mix estratégico executado.", "", ""])
+                
+            t2 = Table(tabela_faltantes, colWidths=[290, 60, 205])
+            t2.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#FEF2F2')),
+                ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor('#991B1B')),
+                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0,0), (-1,-1), 8.5),
+                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                ('ALIGN', (0,1), (0,-1), 'LEFT'),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+                ('TOPPADDING', (0,0), (-1,-1), 5),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#FCA5A5')),
+            ]))
+            story.append(t2)
     
     doc.build(story)
     buffer.seek(0)
@@ -747,13 +746,9 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
 
         promotor_nome = st.text_input("Promotor Responsável:", value="Pamela", disabled=True)
 
-        # Opção exclusiva para Águas da Prata: Marcar se a loja não foi visitada
+        # Se for Águas da Prata, não exige gôndola/preços manuais, pois o foco é gerar o PDF direto com histórico e inovações pendentes
         loja_nao_visitada = False
-        if cidade_escolhida == "Águas da Prata - SP":
-            st.markdown("---")
-            loja_nao_visitada = st.checkbox("🚫 **Loja não visitada neste período** (Gerar PDF com histórico de compras e inovações pendentes)")
-
-        if not loja_nao_visitada:
+        if cidade_escolhida == "Poços de Caldas - MG":
             st.markdown("---")
             st.subheader("🔍 Adicionar Produtos Encontrados na Loja")
             
@@ -861,10 +856,10 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
         if st.button("🚀 Enviar Verificação e Relatório por E-mail"):
             if not razao_social:
                 st.warning("⚠️ Por favor, escolha o Cliente antes de enviar.")
-            elif not loja_nao_visitada and not st.session_state.itens_verificacao and cidade_escolhida == "Poços de Caldas - MG":
+            elif cidade_escolhida == "Poços de Caldas - MG" and not st.session_state.itens_verificacao:
                 st.warning("⚠️ Adicione pelo menos um produto antes de enviar.")
             else:
-                produtos_presentes = st.session_state.itens_verificacao if not loja_nao_visitada else []
+                produtos_presentes = st.session_state.itens_verificacao
                 indices_presentes = [item['index'] for item in produtos_presentes]
                 oportunidades_faltantes = []
                 
@@ -887,7 +882,6 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                     <p><b>Cód Cliente:</b> {cod_cliente}</p>
                     <p><b>Cliente / Razão Social:</b> {razao_social}</p>
                     <p><b>Endereço:</b> {endereco_cliente} - Bairro: {bairro_cliente}</p>
-                    <p><b>Status:</b> {"Loja não visitada no período (Relatório com histórico de compras e inovações)" if loja_nao_visitada else "Loja visitada e auditada"}</p>
                     <p><b>Promotor:</b> Pamela | <b>Localidade:</b> {nome_cidade_sub}</p>
                     <hr>
                     <p>Segue em anexo o relatório executivo em formato <b>PDF</b>.</p>
@@ -953,7 +947,6 @@ elif aba_selecionada == "📊 Vendas & Inovações (Águas da Prata)":
     else:
         nomes_clientes_prata = df_clientes_prata['NOME'].unique().tolist()
         
-        # Filtrar vendas apenas para clientes de Águas da Prata
         vendas_prata = df_vendas[df_vendas['CLIENTE_NOME_LIMPO'].str.upper().isin([str(c).upper() for c in nomes_clientes_prata])]
 
         st.markdown("### 🛒 Todas as Vendas Realizadas em Águas da Prata")
