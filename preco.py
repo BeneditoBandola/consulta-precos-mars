@@ -401,7 +401,6 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, lat_cli,
     
     story.append(Paragraph("<b>🚨 Oportunidades & Histórico de Compras (Itens Faltantes)</b>", secao_style))
     
-    # Removida a coluna 'Linha' e redistribuído o espaço para o nome do produto caber inteiro
     tabela_faltantes = [["Produto Oportunidade", "Cód", "Histórico de Vendas"]]
     
     if oportunidades_faltantes:
@@ -770,8 +769,22 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                             server.login(remetente, senha_app)
                             server.sendmail(remetente, lista_destinatarios, msg.as_string())
                             
+                        st.session_state.email_enviado_recentemente = True
                         st.success(f"🎉 Relatório em PDF enviado com sucesso para: {', '.join(lista_destinatarios)}!")
-                        st.session_state.itens_verificacao = []
                     except Exception as mail_err:
                         st.error(f"❌ Erro ao enviar o e-mail via SMTP: {mail_err}")
                         st.info("💡 Dica: Verifique se a senha de 16 dígitos nos Secrets está correta.")
+
+        if st.session_state.get("email_enviado_recentemente", False):
+            st.markdown("---")
+            st.info("💡 **Deseja limpar as informações da tela para iniciar um novo atendimento ou manter para reutilizar?**")
+            col_b1, col_b2 = st.columns(2)
+            with col_b1:
+                if st.button("🗑️ Não, limpar dados e iniciar novo cliente"):
+                    st.session_state.itens_verificacao = []
+                    st.session_state.email_enviado_recentemente = False
+                    st.rerun()
+            with col_b2:
+                if st.button("🔄 Sim, manter dados na tela"):
+                    st.session_state.email_enviado_recentemente = False
+                    st.rerun()
