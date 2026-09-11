@@ -9,7 +9,6 @@ from email.mime.base import MIMEBase
 from email import encoders
 import re
 from io import BytesIO
-from datetime import datetime
 
 # Importações do ReportLab para geração de PDF
 from reportlab.lib.pagesizes import letter
@@ -166,8 +165,6 @@ def carregar_vendas():
             df_v['CLIENTE_NOME_LIMPO'] = df_v['CLIENTE NOME'].astype(str).str.strip()
         if 'PRODUTO CODIGO' in df_v.columns:
             df_v['PROD_COD_LIMPO'] = df_v['PRODUTO CODIGO'].apply(limpar_campo_codigo)
-        if 'DATA' in df_v.columns:
-            df_v['DATA_COMPRA'] = pd.to_datetime(df_v['DATA'], errors='coerce')
         return df_v
     except Exception:
         pass
@@ -248,8 +245,8 @@ def eh_produto_inovacao_ou_smallbag(row):
 
     return False
 
-# Função corrigida para cruzar perfeitamente com a base de vendas
-def obter_ultima_compra_cliente(razao_social, codigo_produto):
+# Função para verificar o último período com base nas colunas P2026-01 até P2026-10
+def obter_ultima_compra_periodos(razao_social, codigo_produto):
     if df_vendas.empty:
         return "Não comprado este ano", False
     
@@ -260,23 +257,38 @@ def obter_ultima_compra_cliente(razao_social, codigo_produto):
         (df_vendas['PROD_COD_LIMPO'] == cod_limpo)
     ]
     
-    if match_vendas.empty or match_vendas['DATA_COMPRA'].isna().all():
+    if match_vendas.empty:
         return "Não comprado este ano", False
     
-    max_data = match_vendas['DATA_COMPRA'].max()
-    if pd.isna(max_data):
+    # Identifica colunas de períodos P2026-01 até P2026-10
+    colunas_periodos = [c for c in df_vendas.columns if c.startswith('P2026-')]
+    if not colunas_periodos:
         return "Não comprado este ano", False
-        
-    ano_compra = max_data.year
-    data_str = max_data.strftime('%d/%m/%Y')
     
-    # Critério: Não comprado este ano (2026) -> Vermelho e Negrito
-    if ano_compra < 2026:
-        return f"{data_str} (20{str(ano_compra)[-2:]})", False
+    ultimo_periodo_comprado = None
     
-    return data_str, True
+    for idx, row in match_vendas.iterrows():
+        for col in colunas_periodos:
+            val = row.get(col, 0)
+            try:
+                val_qtd = float(str(val).replace(',', '.')) if pd.notna(val) else 0.0
+            except:
+                val_qtd = 0.0
+                
+            if val_qtd > 0:
+                # Extrai o número do período (ex: P2026-03 vira "P2026-03" ou "Período 3")
+                match_p = re.search(r'P\d{4}-(\d+)', col)
+                if match_p:
+                    num_p = int(match_p.group(1))
+                    if ultimo_periodo_comprado is None or num_p > ultimo_periodo_comprado:
+                        ultimo_periodo_comprado = num_p
+                        
+    if ultimo_periodo_comprado is not None:
+        return f"Comprado em P2026-{ultimo_periodo_comprado:02d}", True
+    
+    return "Não comprado este ano", False
 
-# Função para gerar o PDF em memória com histórico de compras e cores condicionais
+# Função para gerar o PDF em memória com histórico de períodos e cores condicionais
 def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos_presentes, oportunidades_faltantes):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
@@ -340,10 +352,10 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos
             diff = item['preco_praticado'] - item['preco_recomendado']
             if diff > 0.00:
                 analise_txt = f"Acima (+R$ {diff:.2f})"
-                cor_estilo = colors.HexColor('#DC2626') # Vermelho
+                cor_estilo = colors.HexColor('#DC2626')
             elif diff < 0.00:
                 analise_txt = f"Abaixo (-R$ {abs(diff):.2f})"
-                cor_estilo = colors.HexColor('#10B981') # Verde
+                cor_estilo = colors.HexColor('#10B981')
             else:
                 analise_txt = "No Preço (Ideal)"
                 cor_estilo = colors.HexColor('#10B981')
@@ -376,7 +388,7 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos
     
     story.append(Paragraph("<b>🚨 Oportunidades & Histórico de Compras (Itens Faltantes)</b>", secao_style))
     
-    tabela_faltantes = [["Produto Oportunidade", "Linha", "Cód", "Última Compra"]]
+    tabela_faltantes = [["Produto Oportunidade", "Linha", "Cód", "Histórico de Vendas"]]
     
     if oportunidades_faltantes:
         oportunidades_ordenadas = sorted(oportunidades_faltantes, key=lambda x: x['produto'])
@@ -385,20 +397,22 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos
             nome_p = item['produto']
             linha_p = str(item['categoria'])
             
-            ultima_data, comprado_este_ano = obter_ultima_compra_cliente(razao_social, prod_cod)
+            # Busca nas colunas de períodos P2026-01 até P2026-10
+            status_periodo, comprado_este_ano = obter_ultima_compra_periodos(razao_social, prod_cod)
             
+            # Se não comprou este ano: Negrito e Vermelho
             if not comprado_este_ano:
                 p_nome = Paragraph(f"<b><font color='#DC2626'>{nome_p[:35]}</font></b>", styles['Normal'])
-                p_data = Paragraph(f"<b><font color='#DC2626'>{ultima_data}</font></b>", styles['Normal'])
+                p_status = Paragraph(f"<b><font color='#DC2626'>{status_periodo}</font></b>", styles['Normal'])
             else:
                 p_nome = Paragraph(nome_p[:35], styles['Normal'])
-                p_data = Paragraph(ultima_data, styles['Normal'])
+                p_status = Paragraph(status_periodo, styles['Normal'])
             
             tabela_faltantes.append([
                 p_nome,
                 linha_p,
                 str(prod_cod),
-                p_data
+                p_status
             ])
     else:
         tabela_faltantes.append(["Nenhuma oportunidade em falta! Mix estratégico 100% executado.", "", "", ""])
@@ -680,7 +694,7 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                     <p><b>Promotor:</b> Pamela</p>
                     <p><b>Localidade:</b> Poços de Caldas - MG</p>
                     <hr>
-                    <p>Segue em anexo o relatório executivo em formato <b>PDF</b> contendo a verificação de preços, oportunidades e o histórico da última compra de cada item faltante para esta loja.</p>
+                    <p>Segue em anexo o relatório executivo em formato <b>PDF</b> contendo a verificação de preços, oportunidades e o histórico de períodos de cada item faltante para esta loja.</p>
                     <p style="font-size: 11px; color: #777; margin-top: 30px;">Relatório gerado automaticamente pelo App de Gestão de Campo - Minassal / Mars (Poços de Caldas - MG).</p>
                   </body>
                 </html>
