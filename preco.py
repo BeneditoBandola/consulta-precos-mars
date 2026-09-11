@@ -139,7 +139,6 @@ def carregar_clientes_pocos():
         return pd.DataFrame()
     try:
         xls = pd.ExcelFile(arquivo_clientes)
-        # dtype=str garante que a coluna de código venha como texto, evitando o .0 originado pelo Excel/Pandas
         df_cli = pd.read_excel(arquivo_clientes, sheet_name=xls.sheet_names[0], dtype=str)
         df_cli.columns = [str(c).strip().upper() for c in df_cli.columns]
         
@@ -201,9 +200,30 @@ def extrair_preco_mg(row):
             preco_raw = row[col_preco]
             break
     try:
-        if isinstance(preco_raw, str):
-            preco_raw = preco_raw.replace('R$', '').replace('.', '').replace(',', '.').strip()
-        return float(preco_raw)
+        if isinstance(preco_raw, (int, float)):
+            return float(preco_raw)
+        
+        txt = str(preco_raw).strip()
+        if not txt:
+            return 0.0
+            
+        txt = txt.replace('R$', '').strip()
+        
+        # Se contiver vírgula e ponto, assumir padrão brasileiro (ponto para milhar, vírgula para decimal)
+        if ',' in txt and '.' in txt:
+            if txt.rfind(',') > txt.rfind('.'):
+                txt = txt.replace('.', '').replace(',', '.')
+            else:
+                txt = txt.replace(',', '')
+        elif ',' in txt:
+            # Apenas vírgula: assumir que é separador decimal se tiver 1 ou 2 casas após
+            parts = txt.split(',')
+            if len(parts) == 2 and len(parts[1]) <= 2:
+                txt = txt.replace(',', '.')
+            else:
+                txt = txt.replace(',', '')
+                
+        return float(txt)
     except:
         return 0.0
 
@@ -220,7 +240,7 @@ def eh_produto_inovacao_ou_smallbag(row):
         return False
     if '500g' in nome and not ('banana' in nome or 'maca' in nome):
         return False
-    
+        
     codigos_removidos = ['97831', '97834', '97825', '97823', '97828', '97844', '97838', '99190', '99191', '99192', '100057', '100060']
     if cod_min in codigos_removidos:
         return False
