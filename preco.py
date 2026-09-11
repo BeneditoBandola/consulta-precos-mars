@@ -143,7 +143,8 @@ def carregar_clientes_pocos():
         df_cli.columns = [str(c).strip().upper() for c in df_cli.columns]
         
         if 'CIDADE' in df_cli.columns:
-            pocos = df_cli[df_cli['CIDADE'].str.contains('POCOS|POÇOS', case=False, na=False)].copy()
+            # Filtro estrito e limpo para Poços de Caldas
+            pocos = df_cli[df_cli['CIDADE'].str.strip().str.upper() == 'POCOS DE CALDAS'].copy()
             pocos['NOME'] = pocos['NOME'].astype(str).str.strip()
             pocos['ENDEREÇO'] = pocos['ENDEREÇO'].fillna('').astype(str).str.strip()
             pocos['BAIRRO'] = pocos['BAIRRO'].fillna('').astype(str).str.strip()
@@ -170,7 +171,8 @@ def carregar_clientes_aguas_prata():
         df_cli.columns = [str(c).strip().upper() for c in df_cli.columns]
         
         if 'CIDADE' in df_cli.columns:
-            prata = df_cli[df_cli['CIDADE'].str.contains('PRATA|ÁGUAS', case=False, na=False)].copy()
+            # Filtro estrito e isolado para AGUAS DA PRATA (sem pegar outras cidades)
+            prata = df_cli[df_cli['CIDADE'].str.strip().str.upper() == 'AGUAS DA PRATA'].copy()
             prata['NOME'] = prata['NOME'].astype(str).str.strip()
             prata['ENDEREÇO'] = prata['ENDEREÇO'].fillna('').astype(str).str.strip()
             prata['BAIRRO'] = prata['BAIRRO'].fillna('').astype(str).str.strip()
@@ -575,7 +577,7 @@ if aba_selecionada == "🔍 Consulta Rápida de Preços":
 # ==========================================
 elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
     st.markdown("<h2 style='text-align: center; color: #F8FAFC; margin-bottom: 5px;'>🏪 Verificação de Clientes de Campo</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; font-size: 13px; color: #94A3B8;'>Selecione a praça/cidade, busque o cliente, adicione os produtos e registre os preços.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; font-size: 13px; color: #94A3B8;'>Selecione a praça/cidade, escolha o cliente da lista, adicione os produtos e registre os preços.</p>", unsafe_allow_html=True)
 
     # --- SELETOR DE CIDADE (FLAG) ---
     cidade_escolhida = st.radio(
@@ -599,35 +601,40 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
         if 'itens_verificacao' not in st.session_state:
             st.session_state.itens_verificacao = []
 
-        lista_clientes = df_clientes_ativo['NOME'].tolist()
+        lista_clientes = sorted(df_clientes_ativo['NOME'].unique().tolist())
         
-        filtro_cliente = st.text_input(f"🔍 Digite para buscar o cliente em {cidade_escolhida}:", placeholder="Digite parte do nome da loja...")
-        
-        if filtro_cliente:
-            clientes_filtrados = [c for c in lista_clientes if normalizar_texto(filtro_cliente) in normalizar_texto(c)]
+        # Lógica especial solicitada: Se for Águas da Prata, como são poucos, exibe direto a lista completa para escolher sem filtro obrigatório
+        if cidade_escolhida == "Águas da Prata - SP":
+            st.markdown(f"<p style='color: #34D399; font-size: 12px; font-weight: 600;'>Exibindo todos os {len(lista_clientes)} clientes cadastrados em Águas da Prata - SP:</p>", unsafe_allow_html=True)
+            razao_social = st.selectbox("Selecione o Cliente:", lista_clientes)
         else:
-            clientes_filtrados = lista_clientes
+            # Para Poços de Caldas (que tem muitos), mantém a busca por texto integrada
+            filtro_cliente = st.text_input(f"🔍 Digite para buscar o cliente em Poços de Caldas:", placeholder="Digite parte do nome da loja...")
+            if filtro_cliente:
+                clientes_filtrados = [c for c in lista_clientes if normalizar_texto(filtro_cliente) in normalizar_texto(c)]
+            else:
+                clientes_filtrados = lista_clientes
 
-        razao_social = None
+            if clientes_filtrados:
+                razao_social = st.selectbox("Selecione na lista filtrada:", clientes_filtrados)
+            else:
+                razao_social = None
+                st.warning("Nenhum cliente encontrado com esse termo.")
+
         endereco_cliente = ""
         bairro_cliente = ""
         lat_cliente = None
         lon_cliente = None
         cod_cliente = ""
 
-        if clientes_filtrados:
-            razao_social = st.selectbox("Selecione na lista filtrada:", clientes_filtrados)
-            
+        if razao_social:
             row_cli = df_clientes_ativo[df_clientes_ativo['NOME'] == razao_social].iloc[0]
             endereco_cliente = str(row_cli.get('ENDEREÇO', ''))
             bairro_cliente = str(row_cli.get('BAIRRO', ''))
             lat_cliente = row_cli.get('LATITUDE', None)
             lon_cliente = row_cli.get('LONGITUDE', None)
             cod_cliente = str(row_cli.get('CÓDIGO_LIMPO', row_cli.get('CÓDIGO', '')))
-        else:
-            st.warning(f"Nenhum cliente encontrado com esse termo em {cidade_escolhida}.")
 
-        if razao_social:
             gps_txt = f"Lat: {lat_cliente}, Lon: {lon_cliente}" if pd.notna(lat_cliente) else "Não disponíveis"
             st.markdown(f"""
             <div style="background-color: #1E293B; border-left: 4px solid #34D399; padding: 10px 15px; border-radius: 8px; margin-bottom: 15px;">
@@ -750,7 +757,7 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
 
         if st.button("🚀 Enviar Verificação e Relatório por E-mail"):
             if not razao_social:
-                st.warning("⚠️ Por favor, busque e selecione o Cliente antes de enviar.")
+                st.warning("⚠️ Por favor, escolha o Cliente antes de enviar.")
             elif not st.session_state.itens_verificacao:
                 st.warning("⚠️ Adicione pelo menos um produto antes de enviar a verificação.")
             else:
