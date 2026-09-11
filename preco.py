@@ -160,6 +160,33 @@ def carregar_clientes_pocos():
     return pd.DataFrame()
 
 @st.cache_data
+def carregar_clientes_aguas_prata():
+    arquivo_clientes = "clientes com coordenadas.xlsx"
+    if not os.path.exists(arquivo_clientes):
+        return pd.DataFrame()
+    try:
+        xls = pd.ExcelFile(arquivo_clientes)
+        df_cli = pd.read_excel(arquivo_clientes, sheet_name=xls.sheet_names[0], dtype=str)
+        df_cli.columns = [str(c).strip().upper() for c in df_cli.columns]
+        
+        if 'CIDADE' in df_cli.columns:
+            prata = df_cli[df_cli['CIDADE'].str.contains('PRATA|ÁGUAS', case=False, na=False)].copy()
+            prata['NOME'] = prata['NOME'].astype(str).str.strip()
+            prata['ENDEREÇO'] = prata['ENDEREÇO'].fillna('').astype(str).str.strip()
+            prata['BAIRRO'] = prata['BAIRRO'].fillna('').astype(str).str.strip()
+            
+            for col_coord in ['LATITUDE', 'LONGITUDE']:
+                if col_coord in prata.columns:
+                    prata[col_coord] = prata[col_coord].astype(str).str.replace(',', '.').astype(float, errors='ignore')
+            
+            if 'CÓDIGO' in prata.columns:
+                prata['CÓDIGO_LIMPO'] = prata['CÓDIGO'].apply(limpar_campo_codigo)
+            return prata
+    except Exception:
+        pass
+    return pd.DataFrame()
+
+@st.cache_data
 def carregar_vendas():
     arquivo_vendas = "todas as vendas ano mars.xlsx"
     if not os.path.exists(arquivo_vendas):
@@ -179,6 +206,7 @@ def carregar_vendas():
 
 df_produtos = carregar_dados()
 df_clientes_pocos = carregar_clientes_pocos()
+df_clientes_prata = carregar_clientes_aguas_prata()
 df_vendas = carregar_vendas()
 
 PASTA_FOTOS = "mockups_produtos"
@@ -209,14 +237,12 @@ def extrair_preco_mg(row):
             
         txt = txt.replace('R$', '').strip()
         
-        # Se contiver vírgula e ponto, assumir padrão brasileiro (ponto para milhar, vírgula para decimal)
         if ',' in txt and '.' in txt:
             if txt.rfind(',') > txt.rfind('.'):
                 txt = txt.replace('.', '').replace(',', '.')
             else:
                 txt = txt.replace(',', '')
         elif ',' in txt:
-            # Apenas vírgula: assumir que é separador decimal se tiver 1 ou 2 casas após
             parts = txt.split(',')
             if len(parts) == 2 and len(parts[1]) <= 2:
                 txt = txt.replace(',', '.')
@@ -313,7 +339,7 @@ def obter_ultima_compra_periodos(razao_social, codigo_produto):
     
     return "Sem histórico de compra esse ano", False
 
-def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, lat_cli, lon_cli, cod_cli, produtos_presentes, oportunidades_faltantes):
+def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, lat_cli, lon_cli, cod_cli, produtos_presentes, oportunidades_faltantes, nome_cidade_sub):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     story = []
@@ -352,7 +378,7 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, lat_cli,
     )
     
     story.append(Paragraph("RELATÓRIO DE VERIFICAÇÃO DE PDV", titulo_style))
-    story.append(Paragraph("Minassal / Mars — Poços de Caldas (MG)", sub_style))
+    story.append(Paragraph(f"Minassal / Mars — {nome_cidade_sub}", sub_style))
     story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#CBD5E1'), spaceAfter=15))
     
     if pd.notna(lat_cli) and pd.notna(lon_cli):
@@ -363,13 +389,13 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, lat_cli,
         gps_html = f'<a href="{map_link}" color="#2563EB"><u>{gps_str} (Abrir no Google Maps)</u></a>'
     else:
         gps_html = "Não disponíveis"
-    
+        
     info_loja = f"""
     <b>Cód Cliente:</b> {cod_cli}<br/>
     <b>Cliente / Razão Social:</b> {razao_social}<br/>
     <b>Endereço:</b> {endereco_cliente} — Bairro: {bairro_cliente}<br/>
     <b>Coordenadas GPS:</b> {gps_html}<br/>
-    <b>Promotora Responsável:</b> Pamela | <b>Localidade:</b> Poços de Caldas - MG
+    <b>Promotora Responsável:</b> Pamela | <b>Localidade:</b> {nome_cidade_sub}
     """
     story.append(Paragraph(info_loja, texto_style))
     story.append(Spacer(1, 15))
@@ -545,23 +571,37 @@ if aba_selecionada == "🔍 Consulta Rápida de Preços":
             st.error(f"❌ Nenhum produto encontrado para: **{codigo_busca}**.")
 
 # ==========================================
-# ABA 2: VERIFICAÇÃO CLIENTE (POÇOS DE CALDAS)
+# ABA 2: VERIFICAÇÃO CLIENTE (POÇOS / PRATA)
 # ==========================================
 elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
-    st.markdown("<h2 style='text-align: center; color: #F8FAFC; margin-bottom: 5px;'>🏪 Verificação de Cliente - Poços de Caldas</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; font-size: 13px; color: #94A3B8;'>Busque e selecione o cliente, adicione os produtos encontrados e registre os preços praticados.</p>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; color: #F8FAFC; margin-bottom: 5px;'>🏪 Verificação de Clientes de Campo</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; font-size: 13px; color: #94A3B8;'>Selecione a praça/cidade, busque o cliente, adicione os produtos e registre os preços.</p>", unsafe_allow_html=True)
+
+    # --- SELETOR DE CIDADE (FLAG) ---
+    cidade_escolhida = st.radio(
+        "Selecione a Praça:",
+        ["Poços de Caldas - MG", "Águas da Prata - SP"],
+        horizontal=True
+    )
+
+    if cidade_escolhida == "Poços de Caldas - MG":
+        df_clientes_ativo = df_clientes_pocos
+        nome_cidade_sub = "Poços de Caldas - MG"
+    else:
+        df_clientes_ativo = df_clientes_prata
+        nome_cidade_sub = "Águas da Prata - SP"
 
     if df_produtos is None:
         st.error("⚠️ Planilha de produtos não encontrada.")
-    elif df_clientes_pocos.empty:
-        st.error("⚠️ Planilha de clientes de Poços de Caldas não encontrada ou vazia.")
+    elif df_clientes_ativo.empty:
+        st.error(f"⚠️ Nenhuma loja encontrada na base para a praça selecionada: **{cidade_escolhida}**.")
     else:
         if 'itens_verificacao' not in st.session_state:
             st.session_state.itens_verificacao = []
 
-        lista_clientes = df_clientes_pocos['NOME'].tolist()
+        lista_clientes = df_clientes_ativo['NOME'].tolist()
         
-        filtro_cliente = st.text_input("🔍 Digite para buscar o cliente (ex: pet, agro, da roça...):", placeholder="Digite parte do nome da loja...")
+        filtro_cliente = st.text_input(f"🔍 Digite para buscar o cliente em {cidade_escolhida}:", placeholder="Digite parte do nome da loja...")
         
         if filtro_cliente:
             clientes_filtrados = [c for c in lista_clientes if normalizar_texto(filtro_cliente) in normalizar_texto(c)]
@@ -578,20 +618,20 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
         if clientes_filtrados:
             razao_social = st.selectbox("Selecione na lista filtrada:", clientes_filtrados)
             
-            row_cli = df_clientes_pocos[df_clientes_pocos['NOME'] == razao_social].iloc[0]
+            row_cli = df_clientes_ativo[df_clientes_ativo['NOME'] == razao_social].iloc[0]
             endereco_cliente = str(row_cli.get('ENDEREÇO', ''))
             bairro_cliente = str(row_cli.get('BAIRRO', ''))
             lat_cliente = row_cli.get('LATITUDE', None)
             lon_cliente = row_cli.get('LONGITUDE', None)
             cod_cliente = str(row_cli.get('CÓDIGO_LIMPO', row_cli.get('CÓDIGO', '')))
         else:
-            st.warning("Nenhum cliente encontrado com esse termo em Poços de Caldas.")
+            st.warning(f"Nenhum cliente encontrado com esse termo em {cidade_escolhida}.")
 
         if razao_social:
             gps_txt = f"Lat: {lat_cliente}, Lon: {lon_cliente}" if pd.notna(lat_cliente) else "Não disponíveis"
             st.markdown(f"""
             <div style="background-color: #1E293B; border-left: 4px solid #34D399; padding: 10px 15px; border-radius: 8px; margin-bottom: 15px;">
-                <span style="font-size: 12px; color: #94A3B8; text-transform: uppercase; font-weight: 700;">Dados da Loja Selecionada (Cód: {cod_cliente}):</span><br>
+                <span style="font-size: 12px; color: #94A3B8; text-transform: uppercase; font-weight: 700;">Loja Selecionada ({cidade_escolhida} | Cód: {cod_cliente}):</span><br>
                 <span style="font-size: 14px; color: #F8FAFC; font-weight: 600;">📍 {endereco_cliente} - Bairro: {bairro_cliente} | 🛰️ GPS: {gps_txt}</span>
             </div>
             """, unsafe_allow_html=True)
@@ -728,7 +768,7 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                                 'preco_recomendado': extrair_preco_mg(row)
                             })
 
-                pdf_buffer = gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, lat_cliente, lon_cliente, cod_cliente, produtos_presentes, oportunidades_faltantes)
+                pdf_buffer = gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, lat_cliente, lon_cliente, cod_cliente, produtos_presentes, oportunidades_faltantes, nome_cidade_sub)
 
                 corpo_html = f"""
                 <html>
@@ -738,10 +778,10 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                     <p><b>Cliente / Razão Social:</b> {razao_social}</p>
                     <p><b>Endereço:</b> {endereco_cliente} - Bairro: {bairro_cliente}</p>
                     <p><b>Coordenadas GPS:</b> Lat: {lat_cliente}, Lon: {lon_cliente}</p>
-                    <p><b>Promotor:</b> Pamela | <b>Localidade:</b> Poços de Caldas - MG</p>
+                    <p><b>Promotor:</b> Pamela | <b>Localidade:</b> {nome_cidade_sub}</p>
                     <hr>
                     <p>Segue em anexo o relatório executivo em formato <b>PDF</b> contendo a verificação de preços, oportunidades e o histórico de períodos para esta loja.</p>
-                    <p style="font-size: 11px; color: #777; margin-top: 30px;">Relatório gerado automaticamente pelo App de Gestão de Campo - Minassal / Mars (Poços de Caldas - MG).</p>
+                    <p style="font-size: 11px; color: #777; margin-top: 30px;">Relatório gerado automaticamente pelo App de Gestão de Campo - Minassal / Mars ({nome_cidade_sub}).</p>
                   </body>
                 </html>
                 """
@@ -773,7 +813,7 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                             ]
 
                         msg = MIMEMultipart()
-                        msg["Subject"] = f"Verificação de Cliente (PDF): {razao_social} - Poços de Caldas"
+                        msg["Subject"] = f"Verificação de Cliente (PDF): {razao_social} - {nome_cidade_sub}"
                         msg["From"] = remetente
                         msg["To"] = ", ".join(lista_destinatarios)
                         
