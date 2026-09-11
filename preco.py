@@ -148,7 +148,6 @@ def carregar_clientes_pocos():
             pocos['ENDEREÇO'] = pocos['ENDEREÇO'].fillna('').astype(str).str.strip()
             pocos['BAIRRO'] = pocos['BAIRRO'].fillna('').astype(str).str.strip()
             
-            # Trata coordenadas com vírgula para ponto
             for col_coord in ['LATITUDE', 'LONGITUDE']:
                 if col_coord in pocos.columns:
                     pocos[col_coord] = pocos[col_coord].astype(str).str.replace(',', '.').astype(float, errors='ignore')
@@ -255,7 +254,7 @@ def eh_produto_inovacao_ou_smallbag(row):
 
 def obter_ultima_compra_periodos(razao_social, codigo_produto):
     if df_vendas.empty:
-        return "Não comprado este ano", False
+        return "Sem histórico de compra esse ano", False
     
     cod_limpo = limpar_campo_codigo(codigo_produto)
     
@@ -265,11 +264,11 @@ def obter_ultima_compra_periodos(razao_social, codigo_produto):
     ]
     
     if match_vendas.empty:
-        return "Não comprado este ano", False
+        return "Sem histórico de compra esse ano", False
     
     colunas_periodos = [c for c in df_vendas.columns if c.startswith('P2026-')]
     if not colunas_periodos:
-        return "Não comprado este ano", False
+        return "Sem histórico de compra esse ano", False
     
     ultimo_periodo_comprado = None
     
@@ -289,11 +288,10 @@ def obter_ultima_compra_periodos(razao_social, codigo_produto):
                         ultimo_periodo_comprado = num_p
                         
     if ultimo_periodo_comprado is not None:
-        return f"Comprado em P2026-{ultimo_periodo_comprado:02d}", True
+        return f"Item foi comprado em P{ultimo_periodo_comprado}", True
     
-    return "Não comprado este ano", False
+    return "Sem histórico de compra esse ano", False
 
-# Função para gerar o PDF em memória com link funcional do Google Maps
 def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, lat_cli, lon_cli, cod_cli, produtos_presentes, oportunidades_faltantes):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
@@ -336,7 +334,6 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, lat_cli,
     story.append(Paragraph("Minassal / Mars — Poços de Caldas (MG)", sub_style))
     story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#CBD5E1'), spaceAfter=15))
     
-    # Link formatado corretamente para o Google Maps com ponto decimal
     if pd.notna(lat_cli) and pd.notna(lon_cli):
         lat_f = f"{float(lat_cli):.6f}"
         lon_f = f"{float(lon_cli):.6f}"
@@ -576,7 +573,6 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
             </div>
             """, unsafe_allow_html=True)
             
-            # Exibe o mapa interativo no Streamlit se houver coordenadas válidas
             if pd.notna(lat_cliente) and pd.notna(lon_cliente):
                 df_mapa = pd.DataFrame({'lat': [float(lat_cliente)], 'lon': [float(lon_cliente)]})
                 st.map(df_mapa, zoom=15, height=200)
@@ -746,6 +742,7 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                         else:
                             lista_destinatarios = [
                                 "benedito.bandola@minassal.com.br",
+                                "fabio.dalava@minassal.com.br",
                                 "poli@minassal.com.br",
                                 "caio.poli@minassal.com.br",
                                 "daniel.santini@minassal.com.br",
