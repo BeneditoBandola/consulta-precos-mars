@@ -436,7 +436,6 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, lat_cli,
     story.append(Paragraph(info_loja, texto_style))
     story.append(Spacer(1, 15))
     
-    # Se for Águas da Prata, o PDF inclui o histórico de compras e as inovações não compradas diretamente
     if "Águas da Prata" in nome_cidade_sub:
         story.append(Paragraph("<b>📦 Histórico de Compras Realizadas (com Períodos)</b>", secao_style))
         compras_cli = obter_historico_compras_cliente(razao_social)
@@ -497,7 +496,6 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, lat_cli,
         ]))
         story.append(t_inv)
     else:
-        # Fluxo original mantido intacto para Poços de Caldas
         if loja_nao_visitada:
             story.append(Paragraph("<b>⚠️ STATUS DO ATENDIMENTO</b>", secao_style))
             story.append(Paragraph("<b>Loja não visitada nesta rota / período.</b> Nenhum produto verificado na gôndola.", texto_style))
@@ -746,7 +744,6 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
 
         promotor_nome = st.text_input("Promotor Responsável:", value="Pamela", disabled=True)
 
-        # Se for Águas da Prata, não exige gôndola/preços manuais, pois o foco é gerar o PDF direto com histórico e inovações pendentes
         loja_nao_visitada = False
         if cidade_escolhida == "Poços de Caldas - MG":
             st.markdown("---")
@@ -845,8 +842,13 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                 st.info("Nenhum produto adicionado ainda.")
 
         st.markdown("---")
-        st.subheader("📤 Opções de Envio do E-mail")
+        st.subheader("💬 Observações e Envio do E-mail")
         
+        observacao_email = st.text_area(
+            "Observações para o E-mail (Opcional):",
+            placeholder="Digite aqui observações adicionais sobre a visita ou o cliente..."
+        )
+
         tipo_envio = st.radio(
             "Enviar relatório para:",
             ["Enviar somente para o Benedito", "Enviar para a Gestão Completa (Todos)"],
@@ -875,6 +877,8 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
 
                 pdf_buffer = gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, lat_cliente, lon_cliente, cod_cliente, produtos_presentes, oportunidades_faltantes, nome_cidade_sub, loja_nao_visitada)
 
+                obs_html = f"<p><b>Observações:</b> {observacao_email}</p>" if observacao_email else ""
+                
                 corpo_html = f"""
                 <html>
                   <body style="font-family: Arial, sans-serif; color: #333;">
@@ -883,6 +887,7 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                     <p><b>Cliente / Razão Social:</b> {razao_social}</p>
                     <p><b>Endereço:</b> {endereco_cliente} - Bairro: {bairro_cliente}</p>
                     <p><b>Promotor:</b> Pamela | <b>Localidade:</b> {nome_cidade_sub}</p>
+                    {obs_html}
                     <hr>
                     <p>Segue em anexo o relatório executivo em formato <b>PDF</b>.</p>
                   </body>
