@@ -401,34 +401,33 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, lat_cli,
     
     story.append(Paragraph("<b>🚨 Oportunidades & Histórico de Compras (Itens Faltantes)</b>", secao_style))
     
-    tabela_faltantes = [["Produto Oportunidade", "Linha", "Cód", "Histórico de Vendas"]]
+    # Removida a coluna 'Linha' e redistribuído o espaço para o nome do produto caber inteiro
+    tabela_faltantes = [["Produto Oportunidade", "Cód", "Histórico de Vendas"]]
     
     if oportunidades_faltantes:
         oportunidades_ordenadas = sorted(oportunidades_faltantes, key=lambda x: x['produto'])
         for item in oportunidades_ordenadas:
             prod_cod = item['codigo']
             nome_p = item['produto']
-            linha_p = str(item['categoria'])
             
             status_periodo, comprado_este_ano = obter_ultima_compra_periodos(razao_social, prod_cod)
             
             if not comprado_este_ano:
-                p_nome = Paragraph(f"<b><font color='#DC2626'>{nome_p[:35]}</font></b>", styles['Normal'])
+                p_nome = Paragraph(f"<b><font color='#DC2626'>{nome_p}</font></b>", styles['Normal'])
                 p_status = Paragraph(f"<b><font color='#DC2626'>{status_periodo}</font></b>", styles['Normal'])
             else:
-                p_nome = Paragraph(nome_p[:35], styles['Normal'])
+                p_nome = Paragraph(nome_p, styles['Normal'])
                 p_status = Paragraph(status_periodo, styles['Normal'])
             
             tabela_faltantes.append([
                 p_nome,
-                linha_p,
                 str(prod_cod),
                 p_status
             ])
     else:
-        tabela_faltantes.append(["Nenhuma oportunidade em falta! Mix estratégico 100% executado.", "", "", ""])
+        tabela_faltantes.append(["Nenhuma oportunidade em falta! Mix estratégico 100% executado.", "", ""])
         
-    t2 = Table(tabela_faltantes, colWidths=[220, 100, 60, 160])
+    t2 = Table(tabela_faltantes, colWidths=[290, 60, 205])
     t2.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#FEF2F2')),
         ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor('#991B1B')),
@@ -540,7 +539,6 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
         if 'itens_verificacao' not in st.session_state:
             st.session_state.itens_verificacao = []
 
-        # Autocomplete Inteligente para Clientes: filtra em tempo real conforme digita
         lista_clientes = df_clientes_pocos['NOME'].tolist()
         
         filtro_cliente = st.text_input("🔍 Digite para buscar o cliente (ex: pet, agro, da roça...):", placeholder="Digite parte do nome da loja...")
