@@ -248,14 +248,16 @@ def eh_produto_inovacao_ou_smallbag(row):
 
     return False
 
-# Função para obter a data da última compra de um produto específico para um cliente
+# Função corrigida para cruzar perfeitamente com a base de vendas
 def obter_ultima_compra_cliente(razao_social, codigo_produto):
     if df_vendas.empty:
-        return "Sem histórico", False
+        return "Não comprado este ano", False
+    
+    cod_limpo = limpar_campo_codigo(codigo_produto)
     
     match_vendas = df_vendas[
         (df_vendas['CLIENTE_NOME_LIMPO'].str.upper() == str(razao_social).upper()) &
-        (df_vendas['PROD_COD_LIMPO'] == str(codigo_produto))
+        (df_vendas['PROD_COD_LIMPO'] == cod_limpo)
     ]
     
     if match_vendas.empty or match_vendas['DATA_COMPRA'].isna().all():
@@ -268,7 +270,7 @@ def obter_ultima_compra_cliente(razao_social, codigo_produto):
     ano_compra = max_data.year
     data_str = max_data.strftime('%d/%m/%Y')
     
-    # Critério: Não comprado este ano (2026)
+    # Critério: Não comprado este ano (2026) -> Vermelho e Negrito
     if ano_compra < 2026:
         return f"{data_str} (20{str(ano_compra)[-2:]})", False
     
@@ -383,10 +385,8 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos
             nome_p = item['produto']
             linha_p = str(item['categoria'])
             
-            # Obtém a data da última compra do histórico de vendas
             ultima_data, comprado_este_ano = obter_ultima_compra_cliente(razao_social, prod_cod)
             
-            # Se não comprou este ano ou nunca comprou: Negrito e Vermelho
             if not comprado_este_ano:
                 p_nome = Paragraph(f"<b><font color='#DC2626'>{nome_p[:35]}</font></b>", styles['Normal'])
                 p_data = Paragraph(f"<b><font color='#DC2626'>{ultima_data}</font></b>", styles['Normal'])
