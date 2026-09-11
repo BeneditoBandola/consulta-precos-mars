@@ -147,6 +147,8 @@ def carregar_clientes_pocos():
             pocos['NOME'] = pocos['NOME'].astype(str).str.strip()
             pocos['ENDEREÇO'] = pocos['ENDEREÇO'].fillna('').astype(str).str.strip()
             pocos['BAIRRO'] = pocos['BAIRRO'].fillna('').astype(str).str.strip()
+            if 'CÓDIGO' in pocos.columns:
+                pocos['CÓDIGO_LIMPO'] = pocos['CÓDIGO'].apply(limpar_campo_codigo)
             return pocos
     except Exception:
         pass
@@ -245,7 +247,6 @@ def eh_produto_inovacao_ou_smallbag(row):
 
     return False
 
-# Função para verificar o último período com base nas colunas P2026-01 até P2026-10
 def obter_ultima_compra_periodos(razao_social, codigo_produto):
     if df_vendas.empty:
         return "Não comprado este ano", False
@@ -260,7 +261,6 @@ def obter_ultima_compra_periodos(razao_social, codigo_produto):
     if match_vendas.empty:
         return "Não comprado este ano", False
     
-    # Identifica colunas de períodos P2026-01 até P2026-10
     colunas_periodos = [c for c in df_vendas.columns if c.startswith('P2026-')]
     if not colunas_periodos:
         return "Não comprado este ano", False
@@ -276,7 +276,6 @@ def obter_ultima_compra_periodos(razao_social, codigo_produto):
                 val_qtd = 0.0
                 
             if val_qtd > 0:
-                # Extrai o número do período (ex: P2026-03 vira "P2026-03" ou "Período 3")
                 match_p = re.search(r'P\d{4}-(\d+)', col)
                 if match_p:
                     num_p = int(match_p.group(1))
@@ -288,8 +287,8 @@ def obter_ultima_compra_periodos(razao_social, codigo_produto):
     
     return "Não comprado este ano", False
 
-# Função para gerar o PDF em memória com histórico de períodos e cores condicionais
-def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos_presentes, oportunidades_faltantes):
+# Função para gerar o PDF em memória com coordenadas GPS / link Google Maps
+def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, lat_cli, lon_cli, cod_cli, produtos_presentes, oportunidades_faltantes):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     story = []
@@ -331,11 +330,16 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos
     story.append(Paragraph("Minassal / Mars — Poços de Caldas (MG)", sub_style))
     story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#CBD5E1'), spaceAfter=15))
     
+    # Bloco de Informações da Loja com Coordenadas e Link de GPS
+    gps_str = f"Lat: {lat_cli}, Lon: {lon_cli}" if pd.notna(lat_cli) and pd.notna(lon_cli) else "Não disponíveis"
+    map_link = f"https://www.google.com/maps/search/?api=1&query={lat_cli},{lon_cli}" if pd.notna(lat_cli) and pd.notna(lon_cli) else "#"
+    
     info_loja = f"""
+    <b>Cód Cliente:</b> {cod_cli}<br/>
     <b>Cliente / Razão Social:</b> {razao_social}<br/>
     <b>Endereço:</b> {endereco_cliente} — Bairro: {bairro_cliente}<br/>
-    <b>Promotora Responsável:</b> Pamela<br/>
-    <b>Localidade:</b> Poços de Caldas - MG
+    <b>Coordenadas GPS:</b> <a href="{map_link}" color="#2563EB"><u>{gps_str} (Abrir no Maps)</u></a><br/>
+    <b>Promotora Responsável:</b> Pamela | <b>Localidade:</b> Poços de Caldas - MG
     """
     story.append(Paragraph(info_loja, texto_style))
     story.append(Spacer(1, 15))
@@ -397,10 +401,8 @@ def gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos
             nome_p = item['produto']
             linha_p = str(item['categoria'])
             
-            # Busca nas colunas de períodos P2026-01 até P2026-10
             status_periodo, comprado_este_ano = obter_ultima_compra_periodos(razao_social, prod_cod)
             
-            # Se não comprou este ano: Negrito e Vermelho
             if not comprado_este_ano:
                 p_nome = Paragraph(f"<b><font color='#DC2626'>{nome_p[:35]}</font></b>", styles['Normal'])
                 p_status = Paragraph(f"<b><font color='#DC2626'>{status_periodo}</font></b>", styles['Normal'])
@@ -534,6 +536,9 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
         razao_social = None
         endereco_cliente = ""
         bairro_cliente = ""
+        lat_cliente = None
+        lon_cliente = None
+        cod_cliente = ""
 
         if termo_cliente:
             df_cli_match = df_clientes_pocos[df_clientes_pocos['NOME'].str.contains(termo_cliente, case=False, na=False)]
@@ -544,14 +549,18 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                 row_cli = df_cli_match[df_cli_match['NOME'] == razao_social].iloc[0]
                 endereco_cliente = str(row_cli.get('ENDEREÇO', ''))
                 bairro_cliente = str(row_cli.get('BAIRRO', ''))
+                lat_cliente = row_cli.get('LATITUDE', None)
+                lon_cliente = row_cli.get('LONGITUDE', None)
+                cod_cliente = str(row_cli.get('CÓDIGO', ''))
             else:
                 st.warning("Nenhum cliente encontrado com esse nome em Poços de Caldas.")
 
         if razao_social:
+            gps_txt = f"Lat: {lat_cliente}, Lon: {lon_cliente}" if pd.notna(lat_cliente) else "Não disponíveis"
             st.markdown(f"""
             <div style="background-color: #1E293B; border-left: 4px solid #34D399; padding: 10px 15px; border-radius: 8px; margin-bottom: 15px;">
-                <span style="font-size: 12px; color: #94A3B8; text-transform: uppercase; font-weight: 700;">Endereço da Loja:</span><br>
-                <span style="font-size: 14px; color: #F8FAFC; font-weight: 600;">📍 {endereco_cliente} - Bairro: {bairro_cliente}</span>
+                <span style="font-size: 12px; color: #94A3B8; text-transform: uppercase; font-weight: 700;">Dados da Loja:</span><br>
+                <span style="font-size: 14px; color: #F8FAFC; font-weight: 600;">📍 {endereco_cliente} - Bairro: {bairro_cliente} | 🛰️ GPS: {gps_txt}</span>
             </div>
             """, unsafe_allow_html=True)
 
@@ -683,18 +692,19 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
                                 'preco_recomendado': extrair_preco_mg(row)
                             })
 
-                pdf_buffer = gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, produtos_presentes, oportunidades_faltantes)
+                pdf_buffer = gerar_pdf_relatorio(razao_social, endereco_cliente, bairro_cliente, lat_cliente, lon_cliente, cod_cliente, produtos_presentes, oportunidades_faltantes)
 
                 corpo_html = f"""
                 <html>
                   <body style="font-family: Arial, sans-serif; color: #333;">
                     <h2 style="color: #0F172A;">🏪 Relatório de Verificação de Cliente</h2>
+                    <p><b>Cód Cliente:</b> {cod_cliente}</p>
                     <p><b>Cliente / Razão Social:</b> {razao_social}</p>
                     <p><b>Endereço:</b> {endereco_cliente} - Bairro: {bairro_cliente}</p>
-                    <p><b>Promotor:</b> Pamela</p>
-                    <p><b>Localidade:</b> Poços de Caldas - MG</p>
+                    <p><b>Coordenadas GPS:</b> Lat: {lat_cliente}, Lon: {lon_cliente}</p>
+                    <p><b>Promotor:</b> Pamela | <b>Localidade:</b> Poços de Caldas - MG</p>
                     <hr>
-                    <p>Segue em anexo o relatório executivo em formato <b>PDF</b> contendo a verificação de preços, oportunidades e o histórico de períodos de cada item faltante para esta loja.</p>
+                    <p>Segue em anexo o relatório executivo em formato <b>PDF</b> contendo a verificação de preços, oportunidades, histórico de períodos e localização de GPS para esta loja.</p>
                     <p style="font-size: 11px; color: #777; margin-top: 30px;">Relatório gerado automaticamente pelo App de Gestão de Campo - Minassal / Mars (Poços de Caldas - MG).</p>
                   </body>
                 </html>
