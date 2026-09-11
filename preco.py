@@ -111,7 +111,7 @@ def carregar_dados():
     if not os.path.exists(arquivo_base):
         return None
     try:
-        df = pd.read_excel(arquivo_base)
+        df = pd.read_excel(arquivo_base, dtype=str)
     except Exception as e:
         return None
 
@@ -139,7 +139,8 @@ def carregar_clientes_pocos():
         return pd.DataFrame()
     try:
         xls = pd.ExcelFile(arquivo_clientes)
-        df_cli = pd.read_excel(arquivo_clientes, sheet_name=xls.sheet_names[0])
+        # dtype=str garante que a coluna de código venha como texto, evitando o .0 originado pelo Excel/Pandas
+        df_cli = pd.read_excel(arquivo_clientes, sheet_name=xls.sheet_names[0], dtype=str)
         df_cli.columns = [str(c).strip().upper() for c in df_cli.columns]
         
         if 'CIDADE' in df_cli.columns:
@@ -166,7 +167,7 @@ def carregar_vendas():
         return pd.DataFrame()
     try:
         xls = pd.ExcelFile(arquivo_vendas)
-        df_v = pd.read_excel(arquivo_vendas, sheet_name=xls.sheet_names[0])
+        df_v = pd.read_excel(arquivo_vendas, sheet_name=xls.sheet_names[0], dtype=str)
         df_v.columns = [str(c).strip().upper() for c in df_v.columns]
         if 'CLIENTE NOME' in df_v.columns:
             df_v['CLIENTE_NOME_LIMPO'] = df_v['CLIENTE NOME'].astype(str).str.strip()
@@ -562,7 +563,7 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
             bairro_cliente = str(row_cli.get('BAIRRO', ''))
             lat_cliente = row_cli.get('LATITUDE', None)
             lon_cliente = row_cli.get('LONGITUDE', None)
-            cod_cliente = str(row_cli.get('CÓDIGO', ''))
+            cod_cliente = str(row_cli.get('CÓDIGO_LIMPO', row_cli.get('CÓDIGO', '')))
         else:
             st.warning("Nenhum cliente encontrado com esse termo em Poços de Caldas.")
 
@@ -570,7 +571,7 @@ elif aba_selecionada == "🏪 VERIFICAÇÃO CLIENTE":
             gps_txt = f"Lat: {lat_cliente}, Lon: {lon_cliente}" if pd.notna(lat_cliente) else "Não disponíveis"
             st.markdown(f"""
             <div style="background-color: #1E293B; border-left: 4px solid #34D399; padding: 10px 15px; border-radius: 8px; margin-bottom: 15px;">
-                <span style="font-size: 12px; color: #94A3B8; text-transform: uppercase; font-weight: 700;">Dados da Loja Selecionada:</span><br>
+                <span style="font-size: 12px; color: #94A3B8; text-transform: uppercase; font-weight: 700;">Dados da Loja Selecionada (Cód: {cod_cliente}):</span><br>
                 <span style="font-size: 14px; color: #F8FAFC; font-weight: 600;">📍 {endereco_cliente} - Bairro: {bairro_cliente} | 🛰️ GPS: {gps_txt}</span>
             </div>
             """, unsafe_allow_html=True)
