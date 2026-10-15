@@ -11,11 +11,6 @@ st.set_page_config(
 if "estado_ativo" not in st.session_state:
   st.session_state.estado_ativo = "MG"
 
-# Tratamento de parâmetros da URL para alternar o estado via cliques customizados
-query_params = st.query_params
-if "estado" in query_params:
-  st.session_state.estado_ativo = query_params["estado"]
-
 if st.session_state.estado_ativo == "MG":
   fundo_app = "#FFFFFF"
   texto_app = "#0F172A"
@@ -34,6 +29,23 @@ st.markdown(
 <style>
 .stApp {{ background-color: {fundo_app} !important; color: {texto_app} !important; }}
 h1, h2, h3, p, span, label {{ color: {texto_app} !important; }}
+
+/* Forçar os botões a assumirem exatamente a cor do fundo e contorno elegante */
+div.stButton > button {{
+    background-color: {fundo_app} !important;
+    color: {texto_app} !important;
+    border: 2px solid #CBD5E1 !important;
+    font-weight: 600 !important;
+    border-radius: 10px !important;
+    transition: all 0.2s ease-in-out;
+}}
+
+/* Destacar o botão do estado ativo com uma borda verde forte e fundo ligeiramente destacado */
+div.stButton > button:hover {{
+    border-color: #10B981 !important;
+    color: #10B981 !important;
+}}
+
 .card-prod {{
     background-color: #FFFFFF;
     border: 1px solid #CBD5E1;
@@ -138,26 +150,15 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Utilizando botões nativos estilizados via st.columns e st.button com truque de estado puro
 col1, col2 = st.columns(2)
 
 with col1:
-  b_mg = st.button(
-      "⛰️ Minas Gerais (MG)",
-      use_container_width=True,
-      type="primary" if st.session_state.estado_ativo == "MG" else "secondary",
-  )
-  if b_mg:
+  if st.button("⛰️ Minas Gerais (MG)", use_container_width=True):
     st.session_state.estado_ativo = "MG"
     st.rerun()
 
 with col2:
-  b_sp = st.button(
-      "🌆 São Paulo (SP)",
-      use_container_width=True,
-      type="primary" if st.session_state.estado_ativo == "SP" else "secondary",
-  )
-  if b_sp:
+  if st.button("🌆 São Paulo (SP)", use_container_width=True):
     st.session_state.estado_ativo = "SP"
     st.rerun()
 
