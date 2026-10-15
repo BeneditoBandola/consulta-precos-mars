@@ -1,6 +1,5 @@
-import os
 from io import BytesIO
-import re
+import os
 import unicodedata
 import pandas as pd
 import streamlit as st
@@ -10,7 +9,7 @@ st.set_page_config(
     page_title="Consulta de Preços - Mars", layout="centered", page_icon="🐱🐶"
 )
 
-# --- 2. ESTILO VISUAL E CORES (TEMA ELEGANTE COM VERDE) ---
+# --- 2. ESTILO VISUAL E CORES ---
 st.markdown(
     """
 <style>
@@ -81,7 +80,7 @@ input, select, textarea {
 )
 
 
-# --- 3. CARREGAR BASES DE DADOS ---
+# --- 3. CARREGAR BASE DO GITHUB ---
 def normalizar_texto(texto):
   if pd.isna(texto):
     return ""
@@ -100,11 +99,15 @@ def limpar_campo_codigo(val):
 
 @st.cache_data
 def carregar_dados():
-  arquivo_base = "skeletor_com_codigo_minassal.xlsx"
-  if not os.path.exists(arquivo_base):
-    return None
+  # URL RAW da planilha unificada hospedada no seu GitHub
+  url_github = "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/skeletor_com_codigo_minassal_preenchido.xlsx"
+  arquivo_local = "skeletor_com_codigo_minassal_preenchido.xlsx"
+
   try:
-    df = pd.read_excel(arquivo_base, dtype=str)
+    if os.path.exists(arquivo_local):
+      df = pd.read_excel(arquivo_local, dtype=str)
+    else:
+      df = pd.read_excel(url_github, dtype=str)
   except Exception as e:
     return None
 
@@ -141,23 +144,16 @@ def obter_caminho_imagem(codigo_identificador):
   return None
 
 
-def extrair_preco_mg(row):
-  preco_raw = 0.0
-  for col_preco in [
-      "RSP \nRECOMENDADO",
-      "RSP \nRecomendado",
-      "RSP RECOMENDADO",
-      "RSP",
-  ]:
-    if col_preco in row and pd.notna(row[col_preco]):
-      preco_raw = row[col_preco]
-      break
+def extrair_preco(row, coluna_alvo):
+  preco_raw = row.get(coluna_alvo, 0.0)
+  if pd.isna(preco_raw):
+    return 0.0
   try:
     if isinstance(preco_raw, (int, float)):
       return float(preco_raw)
 
     txt = str(preco_raw).strip()
-    if not txt:
+    if not txt or txt.lower() == "nan":
       return 0.0
 
     txt = txt.replace("R$", "").strip()
@@ -179,10 +175,26 @@ def extrair_preco_mg(row):
     return 0.0
 
 
-# --- 4. INTERFACE DE CONSULTA RÁPIDA DE PREÇOS ---
+# --- 4. BARRA LATERAL: SELETOR DE ESTADO (MG / SP) ---
+st.sidebar.title("⚙️ Painel de Controlo")
+st.sidebar.markdown("### Selecione o Estado:")
+estado_selecionado = st.sidebar.radio(
+    "Praça:", ["Minas Gerais (MG)", "São Paulo (SP)"]
+)
+
+if "Minas" in estado_selecionado:
+  coluna_preco_selecionada = "RECOMENDADO MG"
+  sigla_estado = "MG"
+  icone_estado = "⛰️"
+else:
+  coluna_preco_selecionada = "RECOMENDADO SP"
+  sigla_estado = "SP"
+  icone_estado = "🌆"
+
+# --- 5. INTERFACE DE CONSULTA RÁPIDA DE PREÇOS ---
 st.markdown(
-    "<h2 style='text-align: center; color: #F8FAFC; margin-bottom:"
-    " 2px;'>🐱🐶 Consulta Preços - Mars</h2>",
+    f"<h2 style='text-align: center; color: #F8FAFC; margin-bottom:"
+    f" 2px;'>🐱🐶 Consulta Preços - Mars ({sigla_estado})</h2>",
     unsafe_allow_html=True,
 )
 st.markdown(
@@ -200,8 +212,7 @@ codigo_busca = st.text_input(
 
 if df_produtos is None:
   st.error(
-      "⚠️ Planilha `skeletor_com_codigo_minassal.xlsx` não encontrada no"
-      " repositório."
+      "⚠️ A planilha unificada não foi encontrada no GitHub ou localmente."
   )
 elif codigo_busca:
   busca_raw = str(codigo_busca).strip()
@@ -236,7 +247,7 @@ elif codigo_busca:
       ean_val = row.get("EAN_LIMPO", "N/D")
       cod_minassal = row.get("CODIGO_MINASSAL_LIMPO", "N/D")
       familia_val = str(row.get("SUBBRAND", row.get("CATEGORIA", "Mars")))
-      preco_recomendado = extrair_preco_mg(row)
+      preco_recomendado = extrair_preco(row, coluna_preco_selecionada)
 
       sku_val = row.get("SKU_LIMPO", "")
       caminho_img = (
@@ -267,16 +278,17 @@ elif codigo_busca:
             .replace(".", ",")
             .replace("X", ".")
         )
-        bloco_preco = (
-            f'<div class="caixa-preco-central"><div class="titulo-preco">💰 RSP'
-            f' Recomendado (MG)</div><div class="valor-preco">'
-            f"{preco_formatado}</div></div>"
-        )
+        bloco_preco = f"""
+                <div class="caixa-preco-central">
+                    <div class="titulo-preco">{icone_estado} RSP Recomendado ({sigla_estado})</div>
+                    <div class="valor-preco">{preco_formatado}</div>
+                </div>
+                """
       else:
         bloco_preco = (
             '<div style="margin-top: 12px;"><span style="color: #FBBF24;'
             ' font-size: 13px; font-weight: 700;">⚠️ Preço não'
-            " cadastrado</span></div>"
+            f" cadastrado para {sigla_estado}</span></div>"
         )
 
       html_card = (
