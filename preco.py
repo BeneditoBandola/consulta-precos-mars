@@ -11,25 +11,23 @@ st.set_page_config(
 if "estado_ativo" not in st.session_state:
   st.session_state.estado_ativo = "MG"
 
-# Configuração de Cores - Tema Clean
+# Tratamento de parâmetros da URL para alternar o estado via cliques customizados
+query_params = st.query_params
+if "estado" in query_params:
+  st.session_state.estado_ativo = query_params["estado"]
+
 if st.session_state.estado_ativo == "MG":
   fundo_app = "#FFFFFF"
-  texto_app = "#1E293B"
-  fundo_botao = "#F1F5F9"
-  texto_botao = "#0F172A"
-  borda_botao = "#CBD5E1"
+  texto_app = "#0F172A"
   sigla_estado = "MG"
-  icone_estado = "⛰️"
   coluna_preco = "RECOMENDADO MG"
+  icone_estado = "⛰️"
 else:
-  fundo_app = "#F0F9FF"
-  texto_app = "#0C4A6E"
-  fundo_botao = "#BAE6FD"
-  texto_botao = "#0369A1"
-  borda_botao = "#7DD3FC"
+  fundo_app = "#E0F2FE"
+  texto_app = "#0F172A"
   sigla_estado = "SP"
-  icone_estado = "🌆"
   coluna_preco = "RECOMENDADO SP"
+  icone_estado = "🌆"
 
 st.markdown(
     f"""
@@ -38,20 +36,22 @@ st.markdown(
 h1, h2, h3, p, span, label {{ color: {texto_app} !important; }}
 .card-prod {{
     background-color: #FFFFFF;
-    border: 1px solid #E2E8F0;
-    border-top: 4px solid #10B981;
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    border: 1px solid #CBD5E1;
+    border-top: 5px solid #10B981;
+    border-radius: 16px;
+    padding: 24px 20px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.08);
     text-align: center;
     margin-top: 15px;
+    margin-bottom: 25px;
 }}
 .card-preco {{
-    background: #F8FAFC;
-    border: 1px solid #CBD5E1;
-    border-radius: 8px;
-    padding: 15px;
-    margin-top: 15px;
+    background: {fundo_app};
+    border: 1.5px solid #CBD5E1;
+    border-top: 4px solid #10B981;
+    padding: 18px;
+    border-radius: 12px;
+    margin-top: 18px;
     text-align: center;
 }}
 input {{ background-color: #FFFFFF !important; color: #0F172A !important; border: 1px solid #CBD5E1 !important; }}
@@ -134,33 +134,45 @@ st.markdown(
 )
 st.markdown(
     "<p style='text-align: center; font-size: 13px; margin-bottom:"
-    " 20px;'>Selecione o estado abaixo:</p>",
+    " 15px;'>Selecione o estado abaixo:</p>",
     unsafe_allow_html=True,
 )
 
-c1, c2 = st.columns(2)
-with c1:
-  if st.button(
-      "⛰️ Minas Gerais (MG)", use_container_width=True, type="secondary"
-  ):
+# Utilizando botões nativos estilizados via st.columns e st.button com truque de estado puro
+col1, col2 = st.columns(2)
+
+with col1:
+  b_mg = st.button(
+      "⛰️ Minas Gerais (MG)",
+      use_container_width=True,
+      type="primary" if st.session_state.estado_ativo == "MG" else "secondary",
+  )
+  if b_mg:
     st.session_state.estado_ativo = "MG"
     st.rerun()
-with c2:
-  if st.button("🌆 São Paulo (SP)", use_container_width=True, type="secondary"):
+
+with col2:
+  b_sp = st.button(
+      "🌆 São Paulo (SP)",
+      use_container_width=True,
+      type="primary" if st.session_state.estado_ativo == "SP" else "secondary",
+  )
+  if b_sp:
     st.session_state.estado_ativo = "SP"
     st.rerun()
 
 st.markdown(
-    f"<p style='text-align: center; font-size: 14px; font-weight: bold;'>"
-    f"Praça Ativa: <b>{sigla_estado}</b></p>",
+    f"<p style='text-align: center; font-size: 13px; font-weight: bold;"
+    f" margin-top: 10px;'>Praça Ativa: {sigla_estado} ({'Minas Gerais' if sigla_estado == 'MG' else 'São Paulo'})</p>",
     unsafe_allow_html=True,
 )
 st.markdown("---")
 
 busca = st.text_input(
     "🔍 Buscar Produto:",
-    placeholder="Digite EAN, código Minassal ou nome...",
-    label_visibility="collapsed",
+    placeholder=(
+        "Digite os dígitos finais do EAN, código Minassal ou nome do produto..."
+    ),
 )
 
 if df_produtos is None:
@@ -206,11 +218,11 @@ elif busca:
                 <h3 style="margin:8px 0; font-size:18px;">{prod}</h3>
                 <p style="font-size:12px; color:#64748B;">Cód Minassal: {cod_min} | EAN: {ean}</p>
                 <div class="card-preco">
-                    <span style="font-size:11px; font-weight:bold; color:#64748B; text-transform:uppercase;">RSP Recomendado ({sigla_estado})</span>
+                    <span style="font-size:11px; font-weight:bold; color:#64748B; text-transform:uppercase;">{icone_estado} RSP Recomendado ({sigla_estado})</span>
                     <div style="font-size:36px; font-weight:900; color:#059669; font-family:monospace;">{prc_fmt}</div>
                 </div>
             </div>
             """
       st.markdown(html, unsafe_allow_html=True)
   else:
-     st.error("❌ Nenhum produto encontrado.")
+    st.error("❌ Nenhum produto encontrado.")
