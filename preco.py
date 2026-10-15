@@ -9,7 +9,7 @@ st.set_page_config(
     page_title="Consulta de Preços - Mars", layout="centered", page_icon="🐱🐶"
 )
 
-# --- 2. ESTILO VISUAL E CORES ---
+# --- 2. ESTILO VISUAL E CORES (COM OS BOTÕES PERSONALIZADOS) ---
 st.markdown(
     """
 <style>
@@ -74,6 +74,39 @@ input, select, textarea {
     background-color: #1E293B !important;
     color: #FFFFFF !important;
 }
+
+/* Estilização personalizada para os botões de seleção de estado centralizados */
+div.stButton > button {
+    width: 100%;
+    font-weight: bold;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 16px;
+    border: 2px solid transparent;
+    transition: all 0.3s ease;
+}
+
+/* Botão de Minas Gerais (Fundo Branco com texto escuro) */
+div[data-testid="column"]:nth-of-type(1) div.stButton > button {
+    background-color: #FFFFFF !important;
+    color: #0F172A !important;
+    border-color: #CBD5E1 !important;
+}
+div[data-testid="column"]:nth-of-type(1) div.stButton > button:hover {
+    background-color: #F1F5F9 !important;
+    border-color: #10B981 !important;
+}
+
+/* Botão de São Paulo (Fundo Azul Claro com texto escuro) */
+div[data-testid="column"]:nth-of-type(2) div.stButton > button {
+    background-color: #E0F2FE !important;
+    color: #0369A1 !important;
+    border-color: #BAE6FD !important;
+}
+div[data-testid="column"]:nth-of-type(2) div.stButton > button:hover {
+    background-color: #BAE6FD !important;
+    border-color: #10B981 !important;
+}
 </style>
 """,
     unsafe_allow_html=True,
@@ -99,7 +132,6 @@ def limpar_campo_codigo(val):
 
 @st.cache_data
 def carregar_dados():
-  # URL RAW da planilha unificada hospedada no seu GitHub
   url_github = "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/skeletor_com_codigo_minassal_preenchido.xlsx"
   arquivo_local = "skeletor_com_codigo_minassal_preenchido.xlsx"
 
@@ -175,39 +207,60 @@ def extrair_preco(row, coluna_alvo):
     return 0.0
 
 
-# --- 4. BARRA LATERAL: SELETOR DE ESTADO (MG / SP) ---
-st.sidebar.title("⚙️ Painel de Controlo")
-st.sidebar.markdown("### Selecione o Estado:")
-estado_selecionado = st.sidebar.radio(
-    "Praça:", ["Minas Gerais (MG)", "São Paulo (SP)"]
+# --- 4. GESTÃO DE ESTADO (MEMÓRIA DO SELETOR) ---
+if "estado_ativo" not in st.session_state:
+  st.session_state.estado_ativo = "MG"
+
+# --- 5. INTERFACE PRINCIPAL ---
+st.markdown(
+    "<h2 style='text-align: center; color: #F8FAFC; margin-bottom:"
+    " 5px;'>🐱🐶 Consulta de Preços - Mars</h2>",
+    unsafe_allow_html=True,
+)
+st.markdown(
+    "<p style='text-align: center; font-size: 13px; color: #94A3B8; margin-bottom:"
+    " 20px;'>Selecione o estado e pesquise pelo produto:</p>",
+    unsafe_allow_html=True,
 )
 
-if "Minas" in estado_selecionado:
+# Botões de Seleção de Estado Centralizados (Minas = Branco | SP = Azul Claro)
+col_btn1, col_btn2 = st.columns(2)
+with col_btn1:
+  if st.button("⛰️ Minas Gerais (MG)", use_container_width=True):
+    st.session_state.estado_ativo = "MG"
+with col_btn2:
+  if st.button("🌆 São Paulo (SP)", use_container_width=True):
+    st.session_state.estado_ativo = "SP"
+
+# Definir variáveis com base na seleção ativa
+if st.session_state.estado_ativo == "MG":
   coluna_preco_selecionada = "RECOMENDADO MG"
   sigla_estado = "MG"
   icone_estado = "⛰️"
+  st.markdown(
+      "<p style='text-align: center; color: #34D399; font-size: 13px;"
+      " font-weight: bold; margin-top: 10px;'>Praça Ativa: Minas Gerais"
+      " (MG)</p>",
+      unsafe_allow_html=True,
+  )
 else:
   coluna_preco_selecionada = "RECOMENDADO SP"
   sigla_estado = "SP"
   icone_estado = "🌆"
+  st.markdown(
+      "<p style='text-align: center; color: #34D399; font-size: 13px;"
+      " font-weight: bold; margin-top: 10px;'>Praça Ativa: São Paulo (SP)</p>",
+      unsafe_allow_html=True,
+  )
 
-# --- 5. INTERFACE DE CONSULTA RÁPIDA DE PREÇOS ---
-st.markdown(
-    f"<h2 style='text-align: center; color: #F8FAFC; margin-bottom:"
-    f" 2px;'>🐱🐶 Consulta Preços - Mars ({sigla_estado})</h2>",
-    unsafe_allow_html=True,
-)
-st.markdown(
-    "<p style='text-align: center; font-size: 13px; color: #94A3B8;'>Digite os"
-    " <b>dígitos finais do código de barras (EAN)</b>, o <b>código"
-    " Minassal</b> ou o <b>nome do produto</b>:</p>",
-    unsafe_allow_html=True,
-)
+st.markdown("---")
 
+# Campo de Busca
 codigo_busca = st.text_input(
     "🔍 Buscar Produto:",
-    placeholder="Ex: 97283, whiskas, pedigree, lata...",
-    label_visibility="collapsed",
+    placeholder=(
+        "Digite os dígitos finais do EAN, código Minassal ou nome do produto..."
+    ),
 )
 
 if df_produtos is None:
