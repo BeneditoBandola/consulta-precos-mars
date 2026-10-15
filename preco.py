@@ -101,31 +101,28 @@ input, select, textarea {{
     border: 1px solid #CBD5E1 !important;
 }}
 
-/* Forçar botões com cores bem claras e texto escuro legível */
-div.stButton > button {{
-    font-weight: bold !important;
-    border-radius: 10px !important;
-    padding: 12px !important;
-    font-size: 16px !important;
-}}
-
-div[data-testid="column"]:nth-of-type(1) div.stButton > button {{
+/* Forçar cores claras fixas nos botões (sem depender do hover) */
+div[data-testid="column"]:nth-of-type(1) button,
+div[data-testid="column"]:nth-of-type(1) button:focus,
+div[data-testid="column"]:nth-of-type(1) button:active {{
     background-color: #FFFFFF !important;
     color: #0F172A !important;
     border: 2px solid #CBD5E1 !important;
 }}
-div[data-testid="column"]:nth-of-type(1) div.stButton > button:hover {{
+div[data-testid="column"]:nth-of-type(1) button:hover {{
     background-color: #F1F5F9 !important;
     color: #0F172A !important;
     border-color: #10B981 !important;
 }}
 
-div[data-testid="column"]:nth-of-type(2) div.stButton > button {{
+div[data-testid="column"]:nth-of-type(2) button,
+div[data-testid="column"]:nth-of-type(2) button:focus,
+div[data-testid="column"]:nth-of-type(2) button:active {{
     background-color: #BAE6FD !important;
     color: #0C4A6E !important;
     border: 2px solid #7DD3FC !important;
 }}
-div[data-testid="column"]:nth-of-type(2) div.stButton > button:hover {{
+div[data-testid="column"]:nth-of-type(2) button:hover {{
     background-color: #7DD3FC !important;
     color: #0C4A6E !important;
     border-color: #10B981 !important;
