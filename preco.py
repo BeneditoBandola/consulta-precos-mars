@@ -9,111 +9,104 @@ st.set_page_config(
     page_title="Consulta de Preços - Mars", layout="centered", page_icon="🐱🐶"
 )
 
-# --- 2. ESTILO VISUAL E CORES (COM OS BOTÕES PERSONALIZADOS) ---
+# --- 2. GESTÃO DE ESTADO (MEMÓRIA DO SELETOR) ---
+if "estado_ativo" not in st.session_state:
+  st.session_state.estado_ativo = "MG"
+
+# Definir as cores dinâmicas com base no estado ativo
+if st.session_state.estado_ativo == "MG":
+  cor_fundo_app = "#FFFFFF"  # Branco para MG
+  cor_texto_app = "#0F172A"  # Texto escuro para contraste no fundo branco
+  cor_card_bg = "#F8FAFC"
+  cor_card_borda = "#E2E8F0"
+  coluna_preco_selecionada = "RECOMENDADO MG"
+  sigla_estado = "MG"
+  icone_estado = "⛰️"
+else:
+  cor_fundo_app = "#E0F2FE"  # Azul clarinho para SP
+  cor_texto_app = "#0F172A"  # Texto escuro para contraste
+  cor_card_bg = "#BAE6FD"
+  cor_card_borda = "#7DD3FC"
+  coluna_preco_selecionada = "RECOMENDADO SP"
+  sigla_estado = "SP"
+  icone_estado = "🌆"
+
+# --- 3. ESTILO VISUAL DINÂMICO ---
 st.markdown(
-    """
+    f"""
 <style>
-.stApp { 
-    background-color: #0F172A; 
-    color: #F8FAFC; 
-}
-.caixa-produto-info {
-    background-color: #1E293B;
-    border: 1px solid #334155;
+.stApp {{ 
+    background-color: {cor_fundo_app} !important; 
+    color: {cor_texto_app} !important; 
+}}
+h1, h2, h3, p, span, label {{ 
+    color: {cor_texto_app} !important; 
+}}
+.caixa-produto-info {{
+    background-color: {cor_card_bg};
+    border: 1px solid {cor_card_borda};
     border-top: 5px solid #10B981;
     border-radius: 16px;
     padding: 24px 20px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
     text-align: center;
     margin-top: 15px;
     margin-bottom: 25px;
-}
-.caixa-preco-central {
-    background: #0F172A;
-    border: 1.5px solid #475569;
+}}
+.caixa-preco-central {{
+    background: {cor_fundo_app};
+    border: 1.5px solid {cor_card_borda};
     border-top: 4px solid #10B981;
     padding: 18px;
     border-radius: 12px;
     margin-top: 18px;
     text-align: center;
-}
-.titulo-preco {
-    color: #94A3B8;
+}}
+.titulo-preco {{
+    color: #64748B;
     font-size: 13px;
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 1px;
-}
-.valor-preco {
-    color: #34D399;
+}}
+.valor-preco {{
+    color: #059669;
     font-size: 44px;
     font-weight: 900;
     margin-top: 4px;
     line-height: 1.1;
     font-family: monospace, sans-serif;
 }
-.badge-familia {
+.badge-familia {{
     display: inline-block;
-    background-color: #334155;
-    color: #F1F5F9;
+    background-color: #E2E8F0;
+    color: #0F172A;
     padding: 5px 14px;
     border-radius: 14px;
     font-size: 12px;
     font-weight: 700;
     margin-bottom: 10px;
-}
-div[data-testid="stImage"] {
+}}
+div[data-testid="stImage"] {{
     display: flex;
     justify-content: center;
     align-items: center;
-}
-div[data-testid="stImage"] img {
+}}
+div[data-testid="stImage"] img {{
     object-fit: contain !important;
-}
-input, select, textarea {
-    background-color: #1E293B !important;
-    color: #FFFFFF !important;
-}
-
-/* Estilização personalizada para os botões de seleção de estado centralizados */
-div.stButton > button {
-    width: 100%;
-    font-weight: bold;
-    border-radius: 10px;
-    padding: 12px;
-    font-size: 16px;
-    border: 2px solid transparent;
-    transition: all 0.3s ease;
-}
-
-/* Botão de Minas Gerais (Fundo Branco com texto escuro) */
-div[data-testid="column"]:nth-of-type(1) div.stButton > button {
+}}
+input, select, textarea {{
     background-color: #FFFFFF !important;
     color: #0F172A !important;
-    border-color: #CBD5E1 !important;
-}
-div[data-testid="column"]:nth-of-type(1) div.stButton > button:hover {
-    background-color: #F1F5F9 !important;
-    border-color: #10B981 !important;
-}
-
-/* Botão de São Paulo (Fundo Azul Claro com texto escuro) */
-div[data-testid="column"]:nth-of-type(2) div.stButton > button {
-    background-color: #E0F2FE !important;
-    color: #0369A1 !important;
-    border-color: #BAE6FD !important;
-}
-div[data-testid="column"]:nth-of-type(2) div.stButton > button:hover {
-    background-color: #BAE6FD !important;
-    border-color: #10B981 !important;
-}
+    border: 1px solid #CBD5E1 !important;
+}}
 </style>
 """,
     unsafe_allow_html=True,
 )
 
 
-# --- 3. CARREGAR BASE DO GITHUB ---
+# --- 4. CARREGAR BASE DO GITHUB ---
 def normalizar_texto(texto):
   if pd.isna(texto):
     return ""
@@ -207,52 +200,34 @@ def extrair_preco(row, coluna_alvo):
     return 0.0
 
 
-# --- 4. GESTÃO DE ESTADO (MEMÓRIA DO SELETOR) ---
-if "estado_ativo" not in st.session_state:
-  st.session_state.estado_ativo = "MG"
-
 # --- 5. INTERFACE PRINCIPAL ---
 st.markdown(
-    "<h2 style='text-align: center; color: #F8FAFC; margin-bottom:"
-    " 5px;'>🐱🐶 Consulta de Preços - Mars</h2>",
+    "<h2 style='text-align: center; margin-bottom: 5px;'>🐱🐶 Consulta de"
+    " Preços - Mars</h2>",
     unsafe_allow_html=True,
 )
 st.markdown(
-    "<p style='text-align: center; font-size: 13px; color: #94A3B8; margin-bottom:"
+    "<p style='text-align: center; font-size: 13px; margin-bottom:"
     " 20px;'>Selecione o estado e pesquise pelo produto:</p>",
     unsafe_allow_html=True,
 )
 
-# Botões de Seleção de Estado Centralizados (Minas = Branco | SP = Azul Claro)
+# Botões de Seleção de Estado Centralizados
 col_btn1, col_btn2 = st.columns(2)
 with col_btn1:
   if st.button("⛰️ Minas Gerais (MG)", use_container_width=True):
     st.session_state.estado_ativo = "MG"
+    st.rerun()
 with col_btn2:
   if st.button("🌆 São Paulo (SP)", use_container_width=True):
     st.session_state.estado_ativo = "SP"
+    st.rerun()
 
-# Definir variáveis com base na seleção ativa
-if st.session_state.estado_ativo == "MG":
-  coluna_preco_selecionada = "RECOMENDADO MG"
-  sigla_estado = "MG"
-  icone_estado = "⛰️"
-  st.markdown(
-      "<p style='text-align: center; color: #34D399; font-size: 13px;"
-      " font-weight: bold; margin-top: 10px;'>Praça Ativa: Minas Gerais"
-      " (MG)</p>",
-      unsafe_allow_html=True,
-  )
-else:
-  coluna_preco_selecionada = "RECOMENDADO SP"
-  sigla_estado = "SP"
-  icone_estado = "🌆"
-  st.markdown(
-      "<p style='text-align: center; color: #34D399; font-size: 13px;"
-      " font-weight: bold; margin-top: 10px;'>Praça Ativa: São Paulo (SP)</p>",
-      unsafe_allow_html=True,
-  )
-
+st.markdown(
+    f"<p style='text-align: center; font-size: 13px; font-weight: bold;"
+    f" margin-top: 10px;'>Praça Ativa: {sigla_estado} ({'Minas Gerais' if sigla_estado == 'MG' else 'São Paulo'})</p>",
+    unsafe_allow_html=True,
+)
 st.markdown("---")
 
 # Campo de Busca
@@ -339,17 +314,17 @@ elif codigo_busca:
                 """
       else:
         bloco_preco = (
-            '<div style="margin-top: 12px;"><span style="color: #FBBF24;'
+            '<div style="margin-top: 12px;"><span style="color: #D97706;'
             ' font-size: 13px; font-weight: 700;">⚠️ Preço não'
             f" cadastrado para {sigla_estado}</span></div>"
         )
 
       html_card = (
           f'<div class="caixa-produto-info"><span'
-          f' class="badge-familia">{familia_val}</span><h3 style="color:'
-          f' #F8FAFC; margin-top: 4px; margin-bottom: 6px; font-size:'
-          f' 19px;">{nome_produto}</h3><p style="font-size: 12.5px; color:'
-          f' #94A3B8; margin-bottom: 0;">{detalhes_str}</p>{bloco_preco}</div>'
+          f' class="badge-familia">{familia_val}</span><h3 style="margin-top:'
+          f' 4px; margin-bottom: 6px; font-size:'
+          f' 19px;">{nome_produto}</h3><p style="font-size: 12.5px;'
+          f' margin-bottom: 0;">{detalhes_str}</p>{bloco_preco}</div>'
       )
       st.markdown(html_card, unsafe_allow_html=True)
   else:
