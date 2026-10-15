@@ -76,7 +76,7 @@ h1, h2, h3, p, span, label {{
     margin-top: 4px;
     line-height: 1.1;
     font-family: monospace, sans-serif;
-}
+}}
 .badge-familia {{
     display: inline-block;
     background-color: #E2E8F0;
