@@ -100,6 +100,29 @@ input, select, textarea {{
     color: #0F172A !important;
     border: 1px solid #CBD5E1 !important;
 }}
+
+/* Forçar cores claras nos botões de seleção de estado */
+div[data-testid="column"]:nth-of-type(1) button {{
+    background-color: #FFFFFF !important;
+    color: #0F172A !important;
+    border: 2px solid #CBD5E1 !important;
+}}
+div[data-testid="column"]:nth-of-type(1) button:hover {{
+    background-color: #F1F5F9 !important;
+    color: #0F172A !important;
+    border-color: #10B981 !important;
+}}
+
+div[data-testid="column"]:nth-of-type(2) button {{
+    background-color: #BAE6FD !important;
+    color: #0369A1 !important;
+    border: 2px solid #7DD3FC !important;
+}}
+div[data-testid="column"]:nth-of-type(2) button:hover {{
+    background-color: #7DD3FC !important;
+    color: #0C4A6E !important;
+    border-color: #10B981 !important;
+}}
 </style>
 """,
     unsafe_allow_html=True,
