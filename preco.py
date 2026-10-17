@@ -30,7 +30,6 @@ st.markdown(
 .stApp {{ background-color: {fundo_app} !important; color: {texto_app} !important; }}
 h1, h2, h3, p, span, label {{ color: {texto_app} !important; }}
 
-/* Forçar os botões a assumirem exatamente a cor do fundo e contorno elegante */
 div.stButton > button {{
     background-color: {fundo_app} !important;
     color: {texto_app} !important;
@@ -40,7 +39,6 @@ div.stButton > button {{
     transition: all 0.2s ease-in-out;
 }}
 
-/* Destacar o botão do estado ativo com uma borda verde forte e fundo ligeiramente destacado */
 div.stButton > button:hover {{
     border-color: #10B981 !important;
     color: #10B981 !important;
@@ -56,15 +54,6 @@ div.stButton > button:hover {{
     text-align: center;
     margin-top: 15px;
     margin-bottom: 25px;
-}}
-.card-preco {{
-    background: {fundo_app};
-    border: 1.5px solid #CBD5E1;
-    border-top: 4px solid #10B981;
-    padding: 18px;
-    border-radius: 12px;
-    margin-top: 18px;
-    text-align: center;
 }}
 input {{ background-color: #FFFFFF !important; color: #0F172A !important; border: 1px solid #CBD5E1 !important; }}
 </style>
@@ -233,7 +222,7 @@ if modo == "🔍 Consulta de Preços":
                         <span style="background:#E2E8F0; color:#0F172A; padding:4px 12px; border-radius:10px; font-size:11px; font-weight:bold;">{familia}</span>
                         <h3 style="margin:8px 0; font-size:18px;">{prod}</h3>
                         <p style="font-size:12px; color:#64748B;">Cód Minassal: {cod_min} | EAN: {ean}</p>
-                        <div class="card-preco">
+                        <div style="background: {fundo_app}; border: 1.5px solid #CBD5E1; border-top: 4px solid #10B981; padding: 18px; border-radius: 12px; margin-top: 18px; text-align: center;">
                             <span style="font-size:11px; font-weight:bold; color:#64748B; text-transform:uppercase;">{icone_estado} RSP Recomendado ({sigla_estado})</span>
                             <div style="font-size:36px; font-weight:900; color:#059669; font-family:monospace;">{prc_fmt}</div>
                         </div>
@@ -340,7 +329,6 @@ else:  # Modo Simulador de Campanhas
                     )
 
                 # Lógica de Arredondamento Psicológico (,99 ou ,90)
-                # Arredondamos para baixo do valor total e colocamos ,99
                 val_int = int(total_promocao)
                 sugestao_99 = val_int - 0.01 if val_int > 0 else 0.99
                 if sugestao_99 <= 0 or sugestao_99 > total_promocao:
@@ -348,37 +336,41 @@ else:  # Modo Simulador de Campanhas
                         float(val_int - 1) + 0.99 if val_int > 1 else 0.99
                     )
 
-                html_campanha = f"""
-                    <div class="card-prod">
-                        <span style="background:#E2E8F0; color:#0F172A; padding:4px 12px; border-radius:10px; font-size:11px; font-weight:bold;">{familia} - SIMULAÇÃO PDV</span>
-                        <h3 style="margin:8px 0; font-size:18px;">{prod}</h3>
-                        <p style="font-size:12px; color:#64748B;">Cód Minassal: {cod_min} | EAN: {ean}</p>
-                        <hr style="border:0; border-top:1px solid #CBD5E1; margin: 12px 0;">
-                        <p style="font-size:13px; font-weight:bold; color:#059669; margin-bottom:5px;">Mecânica: {tipo_campanha} ({detalhe_mec})</p>
-                        
-                        <div style="display: flex; justify-content: space-around; margin-top: 10px;">
-                            <div style="background:{fundo_app}; padding:10px; border-radius:8px; border:1px solid #CBD5E1; width:48%;">
-                                <span style="font-size:10px; color:#64748B; display:block;">PREÇO CHEIO (RSP)</span>
-                                <span style="font-size:18px; font-weight:bold; text-decoration: line-through; color:#64748B;">{fmt_moeda(preco_cheio)}</span>
-                            </div>
-                            <div style="background:#ECFDF5; padding:10px; border-radius:8px; border:1px solid #10B981; width:48%;">
-                                <span style="font-size:10px; color:#047857; display:block; font-weight:bold;">VALOR PROMOCIONAL EXATO</span>
-                                <span style="font-size:20px; font-weight:900; color:#059669; font-family:monospace;">{fmt_moeda(total_promocao)}</span>
-                            </div>
+                # Renderização limpa usando containers nativos do Streamlit
+                with st.container():
+                    st.markdown(
+                        f"""
+                        <div class="card-prod">
+                            <span style="background:#E2E8F0; color:#0F172A; padding:4px 12px; border-radius:10px; font-size:11px; font-weight:bold;">{familia} - SIMULAÇÃO PDV</span>
+                            <h3 style="margin:8px 0; font-size:18px;">{prod}</h3>
+                            <p style="font-size:12px; color:#64748B;">Cód Minassal: {cod_min} | EAN: {ean}</p>
+                            <hr style="border:0; border-top:1px solid #CBD5E1; margin: 12px 0;">
+                            <p style="font-size:13px; font-weight:bold; color:#059669; margin-bottom:5px;">Mecânica: {tipo_campanha} ({detalhe_mec})</p>
                         </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
-                        <div style="margin-top: 12px; background:#F8FAFC; padding:10px; border-radius:8px; border:1px dashed #CBD5E1; display: flex; justify-content: space-between; align-items: center;">
-                            <div style="text-align: left;">
-                                <span style="font-size:11px; color:#334155; font-weight:600; display:block;">Valor por Unidade Efetiva:</span>
-                                <span style="font-size:15px; font-weight:bold; color:#0284C7; font-family:monospace;">{fmt_moeda(preco_unit_efetivo)}</span>
-                            </div>
-                            <div style="text-align: right; background:#FEF3C7; padding:6px 10px; border-radius:6px; border:1px solid #F59E0B;">
-                                <span style="font-size:10px; color:#B45309; font-weight:bold; display:block;">💡 Sugestão Preço Psicológico</span>
-                                <span style="font-size:15px; font-weight:bold; color:#D97706; font-family:monospace;">{fmt_moeda(sugestao_99)}</span>
-                            </div>
-                        </div>
-                    </div>
-                    """
-                st.markdown(html_campanha, unsafe_allow_html=True)
+                    c_1, c_2 = st.columns(2)
+                    with c_1:
+                        st.metric(
+                            label="PREÇO CHEIO (RSP)",
+                            value=fmt_moeda(preco_cheio),
+                        )
+                    with c_2:
+                        st.metric(
+                            label="VALOR PROMOCIONAL EXATO",
+                            value=fmt_moeda(total_promocao),
+                        )
+
+                    c_3, c_4 = st.columns(2)
+                    with c_3:
+                        st.info(
+                            f"**Valor por Unidade Efetiva:**\n\n{fmt_moeda(preco_unit_efetivo)}"
+                        )
+                    with c_4:
+                        st.success(
+                            f"**💡 Sugestão Preço Psicológico:**\n\n{fmt_moeda(sugestao_99)}"
+                        )
         else:
             st.error("❌ Nenhum produto encontrado para a campanha.")
