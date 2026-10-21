@@ -78,22 +78,24 @@ def limpar_codigo(val):
 
 @st.cache_data
 def carregar_dados():
-    url_github = "https://raw.githubusercontent.com/SEU_USUARIO/SEU_REPO/main/skeletor_com_codigo_minassal_preenchido.xlsx"
+    url_github = "https://raw.githubusercontent.com/BeneditoBandola/consulta-precos-mars/main/skeletor_com_codigo_minassal_preenchido.xlsx"
     local = "skeletor_com_codigo_minassal_preenchido.xlsx"
     try:
-        df = (
-            pd.read_excel(local, dtype=str)
-            if os.path.exists(local)
-            else pd.read_excel(url_github, dtype=str)
-        )
-    except:
+        if os.path.exists(local):
+            df = pd.read_excel(local, dtype=str)
+        else:
+            df = pd.read_excel(url_github, dtype=str)
+    except Exception as e:
+        st.error(f"Erro ao carregar a planilha: {e}")
         return None
+        
     df.columns = [str(c).strip().upper() for c in df.columns]
     for c in ["EAN", "CODIGO_MINASSAL", "SKU"]:
         if c in df.columns:
             df[f"{c}_LIMPO"] = df[c].apply(limpar_codigo)
         else:
             df[f"{c}_LIMPO"] = ""
+            
     df["BUSCA_COMPLETA"] = df.apply(
         lambda r: normalizar_texto(
             f"{r.get('PRODUTO', '')} {r.get('SUBBRAND', '')} {r.get('FAMILY PRICE', '')} {r.get('CODIGO_MINASSAL_LIMPO', '')} {r.get('EAN_LIMPO', '')} {r.get('SKU_LIMPO', '')}"
@@ -336,7 +338,6 @@ else:  # Modo Simulador de Campanhas
                         float(val_int - 1) + 0.99 if val_int > 1 else 0.99
                     )
 
-                # Renderização limpa usando containers nativos do Streamlit
                 with st.container():
                     st.markdown(
                         f"""
